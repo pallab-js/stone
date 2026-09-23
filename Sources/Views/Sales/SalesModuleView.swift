@@ -679,6 +679,18 @@ struct SalesEditorView: View {
         guard let customerID = customerId else { return }
         do {
             try db.dbQueue.write { db in
+                var required: [Int64: Int64] = [:]
+                for line in lines where line.qtyKg > 0 && line.ratePaisePerTonne > 0 && line.productId != nil {
+                    guard let productID = line.productId else { continue }
+                    required[productID, default: 0] += line.qtyKg
+                }
+                try StockGate.requireAvailable(
+                    db: db,
+                    replacingInvoiceID: context.invoice?.id,
+                    required: required,
+                    productName: { productById[$0]?.name }
+                )
+
                 let existing = context.invoice
                 let resolvedNo: String
                 if let existing {

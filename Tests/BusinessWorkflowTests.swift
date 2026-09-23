@@ -672,6 +672,68 @@ final class BusinessWorkflowTests: XCTestCase {
             XCTAssertEqual(produced.count, try Product.fetchCount(database), "not every product was produced")
         }
     }
+
+    // MARK: - Stock gate (negative-stock prevention on invoice save)
+
+    func testStockGateBlocksOverselling() throws {
+        let productID: Int64 = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm").id!
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(productID, 10_000)])
+        }
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireAvailable(db: db, replacingInvoiceID: nil, required: [productID: 10_001], productName: { _ in "10mm" })
+        }) { error in
+            XCTAssertEqual(error as? InvoiceValidationError,
+                           .insufficientStock(product: "10mm", availableKg: 10_000, neededKg: 10_001))
+        }
+        // Zero requirement never blocks.
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireAvailable(db: db, replacingInvoiceID: nil, required: [productID: 0], productName: { _ in "10mm" })
+        })
+    }
+
+    func testStockGateAllowsExactlyAvailable() throws {
+        let productID: Int64 = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm").id!
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(productID, 10_000)])
+        }
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireAvailable(db: db, replacingInvoiceID: nil, required: [productID: 10_000], productName: { _ in "10mm" })
+        })
+    }
+
+    func testStockGateAllowsEditingToReuseAlreadySoldStock() throws {
+        let (product, customer) = try appDatabase.dbQueue.write { db in
+            (try makeProduct(db: db, code: "TEN", name: "10mm"),
+             try makeCustomer(db: db, name: "Gate Customer"))
+        }
+        // 8 t invoiced first, then 10 t produced → 2 t on hand.
+        let invoice = try appDatabase.dbQueue.write { db in
+            try saveInvoice(db: db, invoiceNo: "INV-2026-0070", date: .now, customerID: customer.id!, intraState: true,
+                            lines: [DraftLine(productID: product.id!, qtyKg: 8_000, ratePaisePerTonne: 100_000, gstRateBps: 500)])
+        }.invoice
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(product.id!, 10_000)])
+        }
+        let onHand = try appDatabase.dbQueue.read { try balanceKg(db: $0, productID: product.id!) }
+        XCTAssertEqual(onHand, 2_000)
+        // Editing to 9 t re-adds the 8 t the same invoice already consumed: 2 + 8 = 10 ≥ 9 → ok.
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireAvailable(db: db, replacingInvoiceID: invoice.id!, required: [product.id!: 9_000], productName: { _ in "10mm" })
+        })
+        // A brand-new invoice over the 2 t on hand must be rejected.
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireAvailable(db: db, replacingInvoiceID: nil, required: [product.id!: 3_000], productName: { _ in "10mm" })
+        })
+        // Editing to 11 t exceeds 2 + 8 = 10 t → rejected.
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireAvailable(db: db, replacingInvoiceID: invoice.id!, required: [product.id!: 11_000], productName: { _ in "10mm" })
+        })
+    }
 }
 
 private enum WorkflowTestError: Error {
