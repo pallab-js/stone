@@ -204,6 +204,25 @@ final class BusinessWorkflowTests: XCTestCase {
         }
     }
 
+    func testInvoiceNumberingDoesNotCollideAfterMiddleDeletion() throws {
+        try appDatabase.dbQueue.write { db in
+            let customer = try makeCustomer(db: db, name: "Sequence Customer")
+            var created: [String] = []
+            for _ in 1...3 {
+                let no = try InvoiceNumber.next(db: db)
+                try saveInvoice(db: db, invoiceNo: no, date: .now, customerID: customer.id!, intraState: true, lines: [])
+                created.append(no)
+            }
+            // Delete the middle invoice (0002). Count-based numbering would
+            // emit 0003 again, colliding with the still-existing invoice;
+            // MAX-based numbering must continue to 0004.
+            try SalesInvoice
+                .filter(Column("invoiceNo") == created[1])
+                .deleteAll(db)
+            XCTAssertEqual(try InvoiceNumber.next(db: db), String(format: "INV-%d-0004", currentYear()))
+        }
+    }
+
     // MARK: - Production
 
     func testProductionBatchFeedsStock() throws {
@@ -458,6 +477,82 @@ final class BusinessWorkflowTests: XCTestCase {
         }
         XCTAssertEqual(invoiceCount, 0)
         XCTAssertEqual(balance, 10_000) // stock restored to produced level
+    }
+
+    func testCancelInvoiceReturnsStockAndIsExcludedFromSales() throws {
+        let (product, customer) = try appDatabase.dbQueue.write { db in
+            (try makeProduct(db: db, code: "TEN", name: "10mm"),
+             try makeCustomer(db: db, name: "Cancel Customer"))
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(product.id!, 10_000)])
+        }
+        let invoice = try appDatabase.dbQueue.write { db in
+            try saveInvoice(
+                db: db, invoiceNo: "INV-2026-0090", date: .now, customerID: customer.id!,
+                intraState: true,
+                lines: [DraftLine(productID: product.id!, qtyKg: 4_000, ratePaisePerTonne: 100_000, gstRateBps: 500)]
+            ).invoice
+        }
+        let invoiceID = invoice.id!
+
+        // Cancellation requires no linked payments (mirrors cancelSelected()).
+        let canCancel = try appDatabase.dbQueue.read { db in
+            try Payment.filter(Column("invoiceId") == invoiceID).fetchCount(db) == 0
+        }
+        XCTAssertTrue(canCancel)
+
+        try appDatabase.dbQueue.write { db in
+            var persisted = try SalesInvoice.fetchOne(db, key: invoiceID)
+            persisted?.status = .cancelled
+            if let persisted { try persisted.update(db) }
+            try StockMovement
+                .filter(Column("type") == StockMovement.MoveType.sale.rawValue)
+                .filter(Column("refId") == invoiceID)
+                .deleteAll(db)
+        }
+
+        let (status, balance, recordedSales) = try appDatabase.dbQueue.read { db in
+            (
+                try SalesInvoice.fetchOne(db, key: invoiceID)!.status,
+                try balanceKg(db: db, productID: product.id!),
+                try Int64.fetchOne(
+                    db,
+                    sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices WHERE status != ?",
+                    arguments: [SalesInvoice.Status.cancelled.rawValue]
+                ) ?? 0
+            )
+        }
+        XCTAssertEqual(status, .cancelled)
+        XCTAssertEqual(balance, 10_000) // stock returned to produced level
+        XCTAssertEqual(recordedSales, 0) // excluded from sales KPIs
+    }
+
+    func testCustomerOpeningBalanceCountsTowardOutstanding() throws {
+        try appDatabase.dbQueue.write { db in
+            var customer = try makeCustomer(db: db, name: "Opening Balance Customer")
+            customer.openingBalancePaise = 250_000
+            try customer.update(db)
+        }
+        let outstanding = try appDatabase.dbQueue.read { db in
+            let cancelled = SalesInvoice.Status.cancelled.rawValue
+            let invoiced = try Int64.fetchOne(
+                db,
+                sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices WHERE status != ?",
+                arguments: [cancelled]
+            ) ?? 0
+            let collected = try Int64.fetchOne(
+                db,
+                sql: "SELECT COALESCE(SUM(amountPaise), 0) FROM payments WHERE partyType = ?",
+                arguments: [Payment.PartyType.customer.rawValue]
+            ) ?? 0
+            let opening = try Int64.fetchOne(
+                db,
+                sql: "SELECT COALESCE(SUM(openingBalancePaise), 0) FROM customers"
+            ) ?? 0
+            return max(0, invoiced - collected + opening)
+        }
+        XCTAssertEqual(outstanding, 250_000)
     }
 
     // MARK: - Payments & receivables aging

@@ -30,6 +30,7 @@
 		735B53D84CA1834E604B9F3D /* ProductionModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958EB2124ED3D55F0871A7A5 /* ProductionModuleView.swift */; };
 		779030A4819669569E7D27B8 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDBB6D8B231861F7DEC0D48F /* AppDatabase.swift */; };
 		7932038B3B75FB86EE93E1F3 /* DSTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C6459BBC222717723E4BDF8 /* DSTokens.swift */; };
+		7C1C0B058CE4B7FD2F1F9CF8 /* MasterDeletion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45EC245860D0C4C4BFA96CA3 /* MasterDeletion.swift */; };
 		84BDAFD9A50ADF844D3F362D /* StockGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6612C7F96EC60B5129A9777E /* StockGate.swift */; };
 		8E49103F330339A3A223536A /* SuppliersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11BF66A698E5D50B8AA13717 /* SuppliersView.swift */; };
 		91666F495C7D912702B665D4 /* Environment+AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACD973D873B6FBD107B4148 /* Environment+AppDatabase.swift */; };
@@ -75,6 +76,7 @@
 		350EACF4F0FC7E4184A64BA5 /* ReportsModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportsModuleView.swift; sourceTree = "<group>"; };
 		38EDF4DD01715A0B3742B461 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		411AAEF0217D9D9928EA46F9 /* PaymentsModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentsModuleView.swift; sourceTree = "<group>"; };
+		45EC245860D0C4C4BFA96CA3 /* MasterDeletion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasterDeletion.swift; sourceTree = "<group>"; };
 		4849DFD8A74CA872AF6C54D4 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		585DAFDC47C7B8464A017860 /* PurchasesModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchasesModuleView.swift; sourceTree = "<group>"; };
 		59F07DCAF9FE3C083EB266C1 /* DemoSeederTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoSeederTests.swift; sourceTree = "<group>"; };
@@ -188,6 +190,7 @@
 				E2A737891A0BB4460D39FBA2 /* DocumentExport.swift */,
 				AACD973D873B6FBD107B4148 /* Environment+AppDatabase.swift */,
 				4849DFD8A74CA872AF6C54D4 /* Formatting.swift */,
+				45EC245860D0C4C4BFA96CA3 /* MasterDeletion.swift */,
 				6612C7F96EC60B5129A9777E /* StockGate.swift */,
 			);
 			path = Support;
@@ -406,6 +409,7 @@
 				91666F495C7D912702B665D4 /* Environment+AppDatabase.swift in Sources */,
 				1BD605D08004D319387D6F0D /* Formatting.swift in Sources */,
 				BD40227EA13A24FEACFFF258 /* InvoiceDocument.swift in Sources */,
+				7C1C0B058CE4B7FD2F1F9CF8 /* MasterDeletion.swift in Sources */,
 				C6D3935C843A64EFEF51A6FB /* Migrations.swift in Sources */,
 				0AE94FF123477FB5BF17DE9A /* OverviewView.swift in Sources */,
 				3BB906887C22BF0A2D9BD7AD /* PaashERPApp.swift in Sources */,

@@ -10,11 +10,12 @@ single-file database. Single admin user, no cloud, no auth, no server.
 
 > **Status: MVP complete.** All core modules implemented: dashboard with live
 > charts, production, GST sales & invoicing (PDF export), payments, purchases,
-> stock with adjustments, reports with CSV export, and masters. 35 unit tests
+> stock with adjustments, reports with CSV export, and masters. 47 unit tests
 > passing — schema/seeder invariants, formatting, PDF/CSV exports, and a
 > business-workflow suite that exercises production batches, GST invoice math
-> (CGST/SGST/IGST), invoice numbering, stock deduction & reversal, payments,
-> receivables aging, stock valuation, and the Reports KPIs end-to-end.
+> (CGST/SGST/IGST), invoice numbering, stock deduction & reversal, invoice
+> cancellation, payments, receivables aging, stock valuation, and the Reports
+> KPIs end-to-end.
 
 ---
 
@@ -38,8 +39,8 @@ who owes what* — at a glance.
 - 💰 **Payments** — cash / UPI / cheque / transfer, advances, receivables
 - 🛒 **Purchases & expenses** — diesel, electricity, royalty, parts, labour, misc
 - 🏗 **Stock** — stock-in/out, adjustments, wastage, stock statement & valuation
-- 📋 **Reports** — daily production/sales, GST summary, receivables aging, mini P&L (PDF/CSV export)
-- 💾 **Local-first** — single-file SQLite DB, one-click backup/restore
+- 📋 **Reports** — daily production/sales, GST summary, receivables aging, mini P&L (CSV export)
+- 💾 **Local-first** — single-file SQLite DB, one-click backup
 - 🎨 **Uniform enterprise design system** — one consistent theme across every screen
 
 ## Roadmap
@@ -54,7 +55,7 @@ who owes what* — at a glance.
 | P5 | Stock & adjustments | ✅ Done |
 | P6 | Dashboard & analytics (live KPIs + charts) | ✅ Done |
 | P7 | Reports, mini P&L, PDF & CSV export | ✅ Done |
-| P8 | Polish, backups, tests, handover | 🧪 Verified — 21 tests green |
+| P8 | Polish, backups, tests, handover | 🧪 Verified — 47 tests green |
 
 ## Tech stack
 

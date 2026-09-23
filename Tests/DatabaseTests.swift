@@ -64,4 +64,58 @@ final class DatabaseTests: XCTestCase {
             XCTAssertEqual(invoice.grandTotalPaise, expected, "Mismatch on \(invoice.invoiceNo)")
         }
     }
+
+    func testMasterDeletionRemovesUnreferencedProduct() throws {
+        let id: Int64 = try appDatabase.dbQueue.write { db in
+            var product = Product(code: "TEN", name: "10mm")
+            try product.insert(db)
+            return product.id!
+        }
+        let outcome = try appDatabase.dbQueue.write { db in
+            try MasterDeletion.delete(Product.self, id: id, db: db)
+        }
+        XCTAssertEqual(outcome, .deleted)
+        XCTAssertEqual(
+            try appDatabase.dbQueue.read { try Product.fetchCount($0) },
+            0
+        )
+    }
+
+    func testMasterDeletionDeactivatesProductReferencedByStock() throws {
+        let id: Int64 = try appDatabase.dbQueue.write { db in
+            var product = Product(code: "TEN", name: "10mm")
+            try product.insert(db)
+            var move = StockMovement(productId: product.id!, date: .now, type: .production, qtyKg: 1_000)
+            try move.insert(db)
+            return product.id!
+        }
+        let outcome = try appDatabase.dbQueue.write { db in
+            try MasterDeletion.delete(Product.self, id: id, db: db)
+        }
+        XCTAssertEqual(outcome, .deactivated)
+        let (isActive, count) = try appDatabase.dbQueue.read { db in
+            (try Product.fetchOne(db, key: id)!.isActive, try Product.fetchCount(db))
+        }
+        XCTAssertEqual(isActive, false)
+        XCTAssertEqual(count, 1)
+    }
+
+    func testMasterDeletionDeactivatesCustomerReferencedByInvoice() throws {
+        let id: Int64 = try appDatabase.dbQueue.write { db in
+            var customer = Customer(name: "C")
+            try customer.insert(db)
+            var invoice = SalesInvoice(invoiceNo: "INV-2026-0001", date: .now, customerId: customer.id!)
+            try invoice.insert(db)
+            return customer.id!
+        }
+        let outcome = try appDatabase.dbQueue.write { db in
+            try MasterDeletion.delete(Customer.self, id: id, db: db)
+        }
+        XCTAssertEqual(outcome, .deactivated)
+        let (isActive, invoiceCount) = try appDatabase.dbQueue.read { db in
+            (try Customer.fetchOne(db, key: id)!.isActive, try SalesInvoice.fetchCount(db))
+        }
+        XCTAssertEqual(isActive, false)
+        XCTAssertEqual(invoiceCount, 1) // invoice keeps its snapshot
+    }
 }

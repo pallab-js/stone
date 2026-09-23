@@ -65,23 +65,20 @@ struct OverviewView: View {
                 if snapshot.chart.isNotEmpty {
                     SectionHeading(title: "Last 14 days — production vs sales")
                     CardContainer {
-                        Chart(snapshot.chart) { point in
-                            BarMark(
-                                x: .value("Day", point.label),
-                                y: .value("Production (t)", point.productionKg / 1000)
+                        HStack(alignment: .top, spacing: DS.Spacing.xl) {
+                            trendChart(
+                                title: "Production (tonnes)",
+                                value: \.productionKg,
+                                scale: 1000,
+                                tint: DS.Color.info
                             )
-                            .foregroundStyle(by: .value("Series", "Production"))
-                            BarMark(
-                                x: .value("Day", point.label),
-                                y: .value("Sales (₹)", point.salesPaise / 100)
+                            trendChart(
+                                title: "Sales (₹)",
+                                value: \.salesPaise,
+                                scale: 100,
+                                tint: DS.Color.success
                             )
-                            .foregroundStyle(by: .value("Series", "Sales"))
                         }
-                        .chartForegroundStyleScale([
-                            "Production": DS.Color.info,
-                            "Sales": DS.Color.success
-                        ])
-                        .frame(height: 240)
                     }
                 }
 
@@ -141,6 +138,28 @@ struct OverviewView: View {
             }
         }
         .padding(.vertical, DS.Spacing.xs)
+    }
+
+    private func trendChart(
+        title: String,
+        value: KeyPath<DayBar, Int64>,
+        scale: Int64,
+        tint: SwiftUI.Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.s) {
+            Text(title)
+                .font(DS.Font.footnote)
+                .foregroundStyle(.secondary)
+            Chart(snapshot.chart) { point in
+                BarMark(
+                    x: .value("Day", point.label),
+                    y: .value("Value", point[keyPath: value] / scale)
+                )
+                .foregroundStyle(tint)
+            }
+            .frame(height: 210)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func statRow(_ title: String, _ value: Int, icon: String, tint: SwiftUI.Color) -> some View {
@@ -242,26 +261,34 @@ extension OverviewView {
                 arguments: [StockMovement.MoveType.production.rawValue, startOfDay, nextDay]
             ) ?? 0
 
+            let cancelled = SalesInvoice.Status.cancelled.rawValue
+
             snapshot.todaySalesPaise = try Int64.fetchOne(
                 db,
-                sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices WHERE date >= ? AND date < ?",
-                arguments: [startOfDay, nextDay]
+                sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices WHERE status != ? AND date >= ? AND date < ?",
+                arguments: [cancelled, startOfDay, nextDay]
             ) ?? 0
 
             let invoiced = try Int64.fetchOne(
                 db,
-                sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices"
+                sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices WHERE status != ?",
+                arguments: [cancelled]
             ) ?? 0
             let collected = try Int64.fetchOne(
                 db,
                 sql: "SELECT COALESCE(SUM(amountPaise), 0) FROM payments WHERE partyType = ?",
                 arguments: [Payment.PartyType.customer.rawValue]
             ) ?? 0
-            snapshot.outstandingPaise = max(0, invoiced - collected)
+            let openingBalances = try Int64.fetchOne(
+                db,
+                sql: "SELECT COALESCE(SUM(openingBalancePaise), 0) FROM customers"
+            ) ?? 0
+            snapshot.outstandingPaise = max(0, invoiced - collected + openingBalances)
 
             snapshot.openInvoices = try Int.fetchOne(
                 db,
-                sql: "SELECT COUNT(*) FROM salesInvoices"
+                sql: "SELECT COUNT(*) FROM salesInvoices WHERE status != ?",
+                arguments: [cancelled]
             ) ?? 0
 
             struct BalanceRow: Decodable, FetchableRecord {
@@ -300,6 +327,7 @@ extension OverviewView {
                     .fetchAll(db)
                 let invoices = try SalesInvoice
                     .filter(Column("date") >= earliest && Column("date") < nextDay)
+                    .filter(Column("status") != SalesInvoice.Status.cancelled.rawValue)
                     .fetchAll(db)
                 var productionByDay: [Date: Int64] = [:]
                 for move in productionMoves {
@@ -334,6 +362,7 @@ extension OverviewView {
             }
 
             let recent = try SalesInvoice
+                .filter(Column("status") != SalesInvoice.Status.cancelled.rawValue)
                 .order(Column("date").desc, Column("id").desc)
                 .limit(6)
                 .fetchAll(db)

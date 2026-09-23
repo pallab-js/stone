@@ -24,12 +24,14 @@ struct SalesInvoice: Identifiable, Codable, Equatable, Hashable, Sendable {
     enum Status: String, Codable, Sendable, CaseIterable, Identifiable {
         case drafted = "drafted"
         case dispatched = "dispatched"
+        case cancelled = "cancelled"
 
         var id: String { rawValue }
         var label: String {
             switch self {
             case .drafted: "Draft"
             case .dispatched: "Dispatched"
+            case .cancelled: "Cancelled"
             }
         }
     }
