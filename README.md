@@ -10,8 +10,11 @@ single-file database. Single admin user, no cloud, no auth, no server.
 
 > **Status: MVP complete.** All core modules implemented: dashboard with live
 > charts, production, GST sales & invoicing (PDF export), payments, purchases,
-> stock with adjustments, reports with CSV export, and masters. 21 unit tests
-> passing.
+> stock with adjustments, reports with CSV export, and masters. 35 unit tests
+> passing — schema/seeder invariants, formatting, PDF/CSV exports, and a
+> business-workflow suite that exercises production batches, GST invoice math
+> (CGST/SGST/IGST), invoice numbering, stock deduction & reversal, payments,
+> receivables aging, stock valuation, and the Reports KPIs end-to-end.
 
 ---
 

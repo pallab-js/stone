@@ -45,7 +45,7 @@ enum SidebarDestination: Hashable, Identifiable {
         case .products: "cube.box"
         case .customers: "person.2"
         case .suppliers: "truck.box"
-        case .vehicles: "truck"
+        case .vehicles: "truck.box.fill"
         case .settings: "gearshape"
         }
     }
