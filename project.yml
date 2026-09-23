@@ -1,0 +1,64 @@
+name: PaashERP
+options:
+  bundleIdPrefix: com.paasherp
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  groupSortPosition: top
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 7.0.0
+targets:
+  PaashERP:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    entitlements:
+      path: PaashERP.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+    settings:
+      base:
+        PRODUCT_NAME: PaashERP
+        PRODUCT_BUNDLE_IDENTIFIER: com.paasherp.app
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: PaashERP
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.business
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 PaashERP contributors. Licensed under MIT."
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_EMIT_LOC_STRINGS: YES
+    dependencies:
+      - package: GRDB
+  PaashERPTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: PaashERP
+schemes:
+  PaashERP:
+    build:
+      targets:
+        PaashERP: all
+        PaashERPTests: [test]
+    test:
+      targets:
+        - PaashERPTests

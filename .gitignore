@@ -1,0 +1,32 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+!default.mode1v3
+!default.pbxuser
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# PaashERP local app data (never commit)
+# DB files are user data stored in Application Support, not the repo.
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Code Injection
+iOSInjectionProject/
+
+# Test artifacts
+*.profraw
+*.xctestresult

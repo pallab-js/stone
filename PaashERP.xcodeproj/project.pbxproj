@@ -1,0 +1,717 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		00F7D30C23C0AB30181EC6D9 /* BackupDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C33A89142046528D9092DA8 /* BackupDocument.swift */; };
+		0AE94FF123477FB5BF17DE9A /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A36E2AE2DA07E4C03A920C /* OverviewView.swift */; };
+		1741FC3144DE5B8D1E962871 /* StockModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87845910B35E4526D0791C3 /* StockModuleView.swift */; };
+		17A93398548EE9C3C269FE6C /* Supplier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08CA999760579F30CAF90FE /* Supplier.swift */; };
+		19CDC899A821E40F6986DA13 /* DemoSeederTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59F07DCAF9FE3C083EB266C1 /* DemoSeederTests.swift */; };
+		1BD605D08004D319387D6F0D /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4849DFD8A74CA872AF6C54D4 /* Formatting.swift */; };
+		20D0FE119F4E7E54E6375329 /* PurchasesModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585DAFDC47C7B8464A017860 /* PurchasesModuleView.swift */; };
+		2411CC43AB41D8ADA9D006FF /* DatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9AF6F4C75D8B944CAD7CB4 /* DatabaseTests.swift */; };
+		31DEBEDB87E307331B637E4A /* StockMovement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8140EA4E22395BC45BD71CA9 /* StockMovement.swift */; };
+		329097F0D569530FBF32A724 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ECC33730641A3C7F400A7E4 /* SettingsView.swift */; };
+		35ACC1CBB6D12AC92F7BCAE9 /* ReportsModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350EACF4F0FC7E4184A64BA5 /* ReportsModuleView.swift */; };
+		3BB906887C22BF0A2D9BD7AD /* PaashERPApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07CF6FB61A14465F1CC349A6 /* PaashERPApp.swift */; };
+		551AFEE2A046153508328FA2 /* CustomersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9776944B122DB178999DF581 /* CustomersView.swift */; };
+		560D5C3530F6CA0A6A584DC6 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38EDF4DD01715A0B3742B461 /* RootView.swift */; };
+		5704AE0D5B2A0E90D3364162 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 78B47C1614A280F9987910EF /* GRDB */; };
+		59AE0A3B9D501D89145D8F21 /* ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03101DBDBECE85F771C122DE /* ExportTests.swift */; };
+		5EF02A5DAFBCB86C3F3C5CA6 /* PaymentsModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 411AAEF0217D9D9928EA46F9 /* PaymentsModuleView.swift */; };
+		6C92CE32F0F5F77ABB3035D0 /* DocumentExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A737891A0BB4460D39FBA2 /* DocumentExport.swift */; };
+		70C2201C0F41758F98ABBC76 /* VehiclesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A955241AA4F3E8C6CE95804A /* VehiclesView.swift */; };
+		735B53D84CA1834E604B9F3D /* ProductionModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958EB2124ED3D55F0871A7A5 /* ProductionModuleView.swift */; };
+		779030A4819669569E7D27B8 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDBB6D8B231861F7DEC0D48F /* AppDatabase.swift */; };
+		7932038B3B75FB86EE93E1F3 /* DSTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C6459BBC222717723E4BDF8 /* DSTokens.swift */; };
+		8E49103F330339A3A223536A /* SuppliersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11BF66A698E5D50B8AA13717 /* SuppliersView.swift */; };
+		91666F495C7D912702B665D4 /* Environment+AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACD973D873B6FBD107B4148 /* Environment+AppDatabase.swift */; };
+		9178EC1FAFD377A9AD36908E /* ProductsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B090AC9AAEBBE49080182CE2 /* ProductsView.swift */; };
+		9D86BD116021C2232E3367B1 /* DemoSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3F2E71DAC879999E4EE22AC /* DemoSeeder.swift */; };
+		B465335E0467CA6731DDF40C /* DSComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DF56584E7AD9601F0B9DA0 /* DSComponents.swift */; };
+		BB4E8983477FFC075F7A7451 /* AppSetting.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B776F7F66CC0E5802A2622 /* AppSetting.swift */; };
+		BBC51D749D86F2E13AE3190D /* Product.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91050C02DC6A9EEAAAAB3EE /* Product.swift */; };
+		BC6E66E4BC4B27700196E669 /* SalesInvoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075B31CEA10E0B5766779194 /* SalesInvoice.swift */; };
+		BD40227EA13A24FEACFFF258 /* InvoiceDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CD2AD1E86FCFAB58588118 /* InvoiceDocument.swift */; };
+		C5087C1428F00E41D43D7492 /* FormattingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F8F9EEB280CCC7AD78C23CB /* FormattingTests.swift */; };
+		C6D3935C843A64EFEF51A6FB /* Migrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 328BE5036E7FFE034843660C /* Migrations.swift */; };
+		CC189FF278B7837390F97F52 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C60EDDBDABC07D219A33314 /* Assets.xcassets */; };
+		CFFB94F298756286D580A44C /* SalesModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E9BA1DF1FF4D4842BBCAE1 /* SalesModuleView.swift */; };
+		D1A5B3375642CC4B53F8A9E3 /* Payment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 336A2F342353DCBC86A6D0AF /* Payment.swift */; };
+		D9D702B3BF3D5DA584ABE4FF /* ProductionBatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5446EB37069BAC486F8CF6B /* ProductionBatch.swift */; };
+		F567277B4724C60D1F1E0EF4 /* Vehicle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E522A6E5DCF627B7017ACA8 /* Vehicle.swift */; };
+		F9FEF75AE89FCC488BEDC6D0 /* Purchase.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBE42DB9A535AB55AE874732 /* Purchase.swift */; };
+		FB9A24A8BDCD282B6AA9EE54 /* Customer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 697A2F6D5CDEE8FE733B1705 /* Customer.swift */; };
+		FCF61732834133C01CD34610 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326CF5A148D2C45FA6953870 /* AppState.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		F7340292742001FA30129D72 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0005B5E895060BD583E9B5D5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 833C379809EEAAB2FEDFB9DA;
+			remoteInfo = PaashERP;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		03101DBDBECE85F771C122DE /* ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportTests.swift; sourceTree = "<group>"; };
+		06A36E2AE2DA07E4C03A920C /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
+		075B31CEA10E0B5766779194 /* SalesInvoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SalesInvoice.swift; sourceTree = "<group>"; };
+		07CF6FB61A14465F1CC349A6 /* PaashERPApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaashERPApp.swift; sourceTree = "<group>"; };
+		11BF66A698E5D50B8AA13717 /* SuppliersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuppliersView.swift; sourceTree = "<group>"; };
+		326CF5A148D2C45FA6953870 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		328BE5036E7FFE034843660C /* Migrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Migrations.swift; sourceTree = "<group>"; };
+		336A2F342353DCBC86A6D0AF /* Payment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Payment.swift; sourceTree = "<group>"; };
+		34CD2AD1E86FCFAB58588118 /* InvoiceDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceDocument.swift; sourceTree = "<group>"; };
+		350EACF4F0FC7E4184A64BA5 /* ReportsModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportsModuleView.swift; sourceTree = "<group>"; };
+		38EDF4DD01715A0B3742B461 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		411AAEF0217D9D9928EA46F9 /* PaymentsModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentsModuleView.swift; sourceTree = "<group>"; };
+		4849DFD8A74CA872AF6C54D4 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
+		585DAFDC47C7B8464A017860 /* PurchasesModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchasesModuleView.swift; sourceTree = "<group>"; };
+		59F07DCAF9FE3C083EB266C1 /* DemoSeederTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoSeederTests.swift; sourceTree = "<group>"; };
+		697A2F6D5CDEE8FE733B1705 /* Customer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Customer.swift; sourceTree = "<group>"; };
+		6C60EDDBDABC07D219A33314 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6C9AF6F4C75D8B944CAD7CB4 /* DatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseTests.swift; sourceTree = "<group>"; };
+		71DF56584E7AD9601F0B9DA0 /* DSComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSComponents.swift; sourceTree = "<group>"; };
+		7E522A6E5DCF627B7017ACA8 /* Vehicle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vehicle.swift; sourceTree = "<group>"; };
+		7F8F9EEB280CCC7AD78C23CB /* FormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormattingTests.swift; sourceTree = "<group>"; };
+		8140EA4E22395BC45BD71CA9 /* StockMovement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockMovement.swift; sourceTree = "<group>"; };
+		8C33A89142046528D9092DA8 /* BackupDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupDocument.swift; sourceTree = "<group>"; };
+		8C6459BBC222717723E4BDF8 /* DSTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSTokens.swift; sourceTree = "<group>"; };
+		958EB2124ED3D55F0871A7A5 /* ProductionModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionModuleView.swift; sourceTree = "<group>"; };
+		9776944B122DB178999DF581 /* CustomersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomersView.swift; sourceTree = "<group>"; };
+		9E353A344F7F4BEA12784CCC /* PaashERPTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PaashERPTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9ECC33730641A3C7F400A7E4 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A955241AA4F3E8C6CE95804A /* VehiclesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclesView.swift; sourceTree = "<group>"; };
+		AACD973D873B6FBD107B4148 /* Environment+AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Environment+AppDatabase.swift"; sourceTree = "<group>"; };
+		B090AC9AAEBBE49080182CE2 /* ProductsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductsView.swift; sourceTree = "<group>"; };
+		B3F2E71DAC879999E4EE22AC /* DemoSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoSeeder.swift; sourceTree = "<group>"; };
+		C08395BAE959BA9DB1CB5DF1 /* PaashERP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PaashERP.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C08CA999760579F30CAF90FE /* Supplier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Supplier.swift; sourceTree = "<group>"; };
+		C91050C02DC6A9EEAAAAB3EE /* Product.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Product.swift; sourceTree = "<group>"; };
+		E2A737891A0BB4460D39FBA2 /* DocumentExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentExport.swift; sourceTree = "<group>"; };
+		E4B776F7F66CC0E5802A2622 /* AppSetting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSetting.swift; sourceTree = "<group>"; };
+		E8E9BA1DF1FF4D4842BBCAE1 /* SalesModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SalesModuleView.swift; sourceTree = "<group>"; };
+		EBE42DB9A535AB55AE874732 /* Purchase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Purchase.swift; sourceTree = "<group>"; };
+		EDBB6D8B231861F7DEC0D48F /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
+		F5446EB37069BAC486F8CF6B /* ProductionBatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionBatch.swift; sourceTree = "<group>"; };
+		F87845910B35E4526D0791C3 /* StockModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockModuleView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		69FC5796F7E36D24E4938DFB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5704AE0D5B2A0E90D3364162 /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0EDDF25F757E40E873C3247E /* Masters */ = {
+			isa = PBXGroup;
+			children = (
+				9776944B122DB178999DF581 /* CustomersView.swift */,
+				B090AC9AAEBBE49080182CE2 /* ProductsView.swift */,
+				11BF66A698E5D50B8AA13717 /* SuppliersView.swift */,
+				A955241AA4F3E8C6CE95804A /* VehiclesView.swift */,
+			);
+			path = Masters;
+			sourceTree = "<group>";
+		};
+		12512C27D2357E8AAA96C32F = {
+			isa = PBXGroup;
+			children = (
+				23FB4620C3B8197517731D4B /* Sources */,
+				A7647C51C02D22457B7D1408 /* Tests */,
+				96B06EB6B1C1B18C6D8E41E1 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		1DD144869BD65FE22972860D /* Stock */ = {
+			isa = PBXGroup;
+			children = (
+				F87845910B35E4526D0791C3 /* StockModuleView.swift */,
+			);
+			path = Stock;
+			sourceTree = "<group>";
+		};
+		23FB4620C3B8197517731D4B /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				33E3E1474961713078E66203 /* App */,
+				CE70E62F68BBF147691E7EB0 /* Database */,
+				7C8B7A954B6F8998ECB0E192 /* DesignSystem */,
+				885E49A949843FB4CA615D5E /* Models */,
+				5BBB32C7C96EBCE14257F7EC /* Support */,
+				ED2166EA3ACD7C4448584764 /* Views */,
+				6C60EDDBDABC07D219A33314 /* Assets.xcassets */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		33E3E1474961713078E66203 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				326CF5A148D2C45FA6953870 /* AppState.swift */,
+				07CF6FB61A14465F1CC349A6 /* PaashERPApp.swift */,
+				38EDF4DD01715A0B3742B461 /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		51FAA4F56685904CB2C03AC9 /* Purchases */ = {
+			isa = PBXGroup;
+			children = (
+				585DAFDC47C7B8464A017860 /* PurchasesModuleView.swift */,
+			);
+			path = Purchases;
+			sourceTree = "<group>";
+		};
+		5BBB32C7C96EBCE14257F7EC /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				8C33A89142046528D9092DA8 /* BackupDocument.swift */,
+				E2A737891A0BB4460D39FBA2 /* DocumentExport.swift */,
+				AACD973D873B6FBD107B4148 /* Environment+AppDatabase.swift */,
+				4849DFD8A74CA872AF6C54D4 /* Formatting.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		6CFF02DF63A8EC807668E986 /* Sales */ = {
+			isa = PBXGroup;
+			children = (
+				34CD2AD1E86FCFAB58588118 /* InvoiceDocument.swift */,
+				E8E9BA1DF1FF4D4842BBCAE1 /* SalesModuleView.swift */,
+			);
+			path = Sales;
+			sourceTree = "<group>";
+		};
+		7C8B7A954B6F8998ECB0E192 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				71DF56584E7AD9601F0B9DA0 /* DSComponents.swift */,
+				8C6459BBC222717723E4BDF8 /* DSTokens.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		85437F67631F7E235D64B1D7 /* Payments */ = {
+			isa = PBXGroup;
+			children = (
+				411AAEF0217D9D9928EA46F9 /* PaymentsModuleView.swift */,
+			);
+			path = Payments;
+			sourceTree = "<group>";
+		};
+		885E49A949843FB4CA615D5E /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				E4B776F7F66CC0E5802A2622 /* AppSetting.swift */,
+				697A2F6D5CDEE8FE733B1705 /* Customer.swift */,
+				336A2F342353DCBC86A6D0AF /* Payment.swift */,
+				C91050C02DC6A9EEAAAAB3EE /* Product.swift */,
+				F5446EB37069BAC486F8CF6B /* ProductionBatch.swift */,
+				EBE42DB9A535AB55AE874732 /* Purchase.swift */,
+				075B31CEA10E0B5766779194 /* SalesInvoice.swift */,
+				8140EA4E22395BC45BD71CA9 /* StockMovement.swift */,
+				C08CA999760579F30CAF90FE /* Supplier.swift */,
+				7E522A6E5DCF627B7017ACA8 /* Vehicle.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		96B06EB6B1C1B18C6D8E41E1 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C08395BAE959BA9DB1CB5DF1 /* PaashERP.app */,
+				9E353A344F7F4BEA12784CCC /* PaashERPTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9CAC3845994613CEFF70F82E /* Production */ = {
+			isa = PBXGroup;
+			children = (
+				958EB2124ED3D55F0871A7A5 /* ProductionModuleView.swift */,
+			);
+			path = Production;
+			sourceTree = "<group>";
+		};
+		A7647C51C02D22457B7D1408 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				6C9AF6F4C75D8B944CAD7CB4 /* DatabaseTests.swift */,
+				59F07DCAF9FE3C083EB266C1 /* DemoSeederTests.swift */,
+				03101DBDBECE85F771C122DE /* ExportTests.swift */,
+				7F8F9EEB280CCC7AD78C23CB /* FormattingTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		CE70E62F68BBF147691E7EB0 /* Database */ = {
+			isa = PBXGroup;
+			children = (
+				EDBB6D8B231861F7DEC0D48F /* AppDatabase.swift */,
+				B3F2E71DAC879999E4EE22AC /* DemoSeeder.swift */,
+				328BE5036E7FFE034843660C /* Migrations.swift */,
+			);
+			path = Database;
+			sourceTree = "<group>";
+		};
+		DC171A189E883835700195B7 /* Reports */ = {
+			isa = PBXGroup;
+			children = (
+				350EACF4F0FC7E4184A64BA5 /* ReportsModuleView.swift */,
+			);
+			path = Reports;
+			sourceTree = "<group>";
+		};
+		ED2166EA3ACD7C4448584764 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				0EDDF25F757E40E873C3247E /* Masters */,
+				85437F67631F7E235D64B1D7 /* Payments */,
+				9CAC3845994613CEFF70F82E /* Production */,
+				51FAA4F56685904CB2C03AC9 /* Purchases */,
+				DC171A189E883835700195B7 /* Reports */,
+				6CFF02DF63A8EC807668E986 /* Sales */,
+				1DD144869BD65FE22972860D /* Stock */,
+				06A36E2AE2DA07E4C03A920C /* OverviewView.swift */,
+				9ECC33730641A3C7F400A7E4 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3595C024858A8B560EC0367F /* PaashERPTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 61F6A78DB36D14E7788DFFED /* Build configuration list for PBXNativeTarget "PaashERPTests" */;
+			buildPhases = (
+				81DFED98D7EFC79B584F0186 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A111832C8246209C167F816C /* PBXTargetDependency */,
+			);
+			name = PaashERPTests;
+			packageProductDependencies = (
+			);
+			productName = PaashERPTests;
+			productReference = 9E353A344F7F4BEA12784CCC /* PaashERPTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		833C379809EEAAB2FEDFB9DA /* PaashERP */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B85A689033DE8FE0F163A315 /* Build configuration list for PBXNativeTarget "PaashERP" */;
+			buildPhases = (
+				34FAE20D0D2B462B6F23DA46 /* Sources */,
+				4381DE9F7ACF4BB4F2529108 /* Resources */,
+				69FC5796F7E36D24E4938DFB /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PaashERP;
+			packageProductDependencies = (
+				78B47C1614A280F9987910EF /* GRDB */,
+			);
+			productName = PaashERP;
+			productReference = C08395BAE959BA9DB1CB5DF1 /* PaashERP.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0005B5E895060BD583E9B5D5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					833C379809EEAAB2FEDFB9DA = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 265F71D8DFE052D1B31F764E /* Build configuration list for PBXProject "PaashERP" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 12512C27D2357E8AAA96C32F;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				8944E451432C291FBE8EA53F /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 96B06EB6B1C1B18C6D8E41E1 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				833C379809EEAAB2FEDFB9DA /* PaashERP */,
+				3595C024858A8B560EC0367F /* PaashERPTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4381DE9F7ACF4BB4F2529108 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC189FF278B7837390F97F52 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		34FAE20D0D2B462B6F23DA46 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				779030A4819669569E7D27B8 /* AppDatabase.swift in Sources */,
+				BB4E8983477FFC075F7A7451 /* AppSetting.swift in Sources */,
+				FCF61732834133C01CD34610 /* AppState.swift in Sources */,
+				00F7D30C23C0AB30181EC6D9 /* BackupDocument.swift in Sources */,
+				FB9A24A8BDCD282B6AA9EE54 /* Customer.swift in Sources */,
+				551AFEE2A046153508328FA2 /* CustomersView.swift in Sources */,
+				B465335E0467CA6731DDF40C /* DSComponents.swift in Sources */,
+				7932038B3B75FB86EE93E1F3 /* DSTokens.swift in Sources */,
+				9D86BD116021C2232E3367B1 /* DemoSeeder.swift in Sources */,
+				6C92CE32F0F5F77ABB3035D0 /* DocumentExport.swift in Sources */,
+				91666F495C7D912702B665D4 /* Environment+AppDatabase.swift in Sources */,
+				1BD605D08004D319387D6F0D /* Formatting.swift in Sources */,
+				BD40227EA13A24FEACFFF258 /* InvoiceDocument.swift in Sources */,
+				C6D3935C843A64EFEF51A6FB /* Migrations.swift in Sources */,
+				0AE94FF123477FB5BF17DE9A /* OverviewView.swift in Sources */,
+				3BB906887C22BF0A2D9BD7AD /* PaashERPApp.swift in Sources */,
+				D1A5B3375642CC4B53F8A9E3 /* Payment.swift in Sources */,
+				5EF02A5DAFBCB86C3F3C5CA6 /* PaymentsModuleView.swift in Sources */,
+				BBC51D749D86F2E13AE3190D /* Product.swift in Sources */,
+				D9D702B3BF3D5DA584ABE4FF /* ProductionBatch.swift in Sources */,
+				735B53D84CA1834E604B9F3D /* ProductionModuleView.swift in Sources */,
+				9178EC1FAFD377A9AD36908E /* ProductsView.swift in Sources */,
+				F9FEF75AE89FCC488BEDC6D0 /* Purchase.swift in Sources */,
+				20D0FE119F4E7E54E6375329 /* PurchasesModuleView.swift in Sources */,
+				35ACC1CBB6D12AC92F7BCAE9 /* ReportsModuleView.swift in Sources */,
+				560D5C3530F6CA0A6A584DC6 /* RootView.swift in Sources */,
+				BC6E66E4BC4B27700196E669 /* SalesInvoice.swift in Sources */,
+				CFFB94F298756286D580A44C /* SalesModuleView.swift in Sources */,
+				329097F0D569530FBF32A724 /* SettingsView.swift in Sources */,
+				1741FC3144DE5B8D1E962871 /* StockModuleView.swift in Sources */,
+				31DEBEDB87E307331B637E4A /* StockMovement.swift in Sources */,
+				17A93398548EE9C3C269FE6C /* Supplier.swift in Sources */,
+				8E49103F330339A3A223536A /* SuppliersView.swift in Sources */,
+				F567277B4724C60D1F1E0EF4 /* Vehicle.swift in Sources */,
+				70C2201C0F41758F98ABBC76 /* VehiclesView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		81DFED98D7EFC79B584F0186 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2411CC43AB41D8ADA9D006FF /* DatabaseTests.swift in Sources */,
+				19CDC899A821E40F6986DA13 /* DemoSeederTests.swift in Sources */,
+				59AE0A3B9D501D89145D8F21 /* ExportTests.swift in Sources */,
+				C5087C1428F00E41D43D7492 /* FormattingTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A111832C8246209C167F816C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 833C379809EEAAB2FEDFB9DA /* PaashERP */;
+			targetProxy = F7340292742001FA30129D72 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		494F72AD76BDBEEBDB0FD8D0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.paasherp.PaashERPTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PaashERP.app/Contents/MacOS/PaashERP";
+			};
+			name = Release;
+		};
+		51DC25BF4169B1F430275964 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.paasherp.PaashERPTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PaashERP.app/Contents/MacOS/PaashERP";
+			};
+			name = Debug;
+		};
+		6669940BF048F17A845DD287 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		6FD4D06CE0C64D3959DA8C0D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		76F95F5693F36E8DF9037606 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = PaashERP.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PaashERP;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 PaashERP contributors. Licensed under MIT.";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paasherp.app;
+				PRODUCT_NAME = PaashERP;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B1D0C811B27A9BEE45D44A9F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = PaashERP.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PaashERP;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 PaashERP contributors. Licensed under MIT.";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paasherp.app;
+				PRODUCT_NAME = PaashERP;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		265F71D8DFE052D1B31F764E /* Build configuration list for PBXProject "PaashERP" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6FD4D06CE0C64D3959DA8C0D /* Debug */,
+				6669940BF048F17A845DD287 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		61F6A78DB36D14E7788DFFED /* Build configuration list for PBXNativeTarget "PaashERPTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				51DC25BF4169B1F430275964 /* Debug */,
+				494F72AD76BDBEEBDB0FD8D0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B85A689033DE8FE0F163A315 /* Build configuration list for PBXNativeTarget "PaashERP" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				76F95F5693F36E8DF9037606 /* Debug */,
+				B1D0C811B27A9BEE45D44A9F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8944E451432C291FBE8EA53F /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		78B47C1614A280F9987910EF /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8944E451432C291FBE8EA53F /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0005B5E895060BD583E9B5D5 /* Project object */;
+}
