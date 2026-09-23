@@ -22,7 +22,7 @@ struct StockModuleView: View {
     @Environment(\.appDatabase) private var db
     @State private var balances: [StockBalanceRow] = []
     @State private var movements: [StockMovementRow] = []
-    @State private var selection: Int64?
+    @State private var movementSelection: StockMovementRow.ID?
     @State private var editor: StockAdjustContext?
     @State private var confirmDelete = false
     @State private var errorMessage: String?
@@ -75,13 +75,22 @@ struct StockModuleView: View {
                     Label("Adjust Stock", systemImage: "plus")
                 }
                 Button(role: .destructive) {
-                    confirmDelete = confirmDelete
+                    confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
-                .disabled(true)
-                .hidden()
+                .disabled(movementSelection == nil)
             }
+        }
+        .confirmationDialog(
+            "Delete stock movement?",
+            isPresented: $confirmDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Movement", role: .destructive) { deleteSelected() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the movement from the stock ledger. Movements linked to a production batch or sales invoice cannot be deleted here.")
         }
         .sheet(item: $editor) { context in
             StockAdjustView(context: context) { reload() }
@@ -144,7 +153,7 @@ struct StockModuleView: View {
 
     @ViewBuilder
     private var movementsTable: some View {
-        Table(of: StockMovementRow.self) {
+        Table(of: StockMovementRow.self, selection: $movementSelection) {
             TableColumn("Date") { row in
                 Text(Format.shortDate(row.movement.date))
                     .foregroundStyle(.secondary)
@@ -183,6 +192,25 @@ struct StockModuleView: View {
 
     private var totalValuePaise: Int64 {
         balances.reduce(0) { $0 + $1.valuePaise }
+    }
+
+    private func deleteSelected() {
+        guard let selectedID = movementSelection,
+              let row = movements.first(where: { $0.id == selectedID }) else { return }
+        guard row.movement.refId == nil else {
+            errorMessage = "This movement belongs to a production batch or sales invoice and can't be deleted here. Edit or delete the source record instead."
+            movementSelection = nil
+            return
+        }
+        do {
+            try db.dbQueue.write { db in
+                try StockMovement.deleteOne(db, key: row.movement.id ?? 0)
+            }
+            movementSelection = nil
+            reload()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func signedQuantity(_ kg: Int64) -> String {
@@ -302,7 +330,7 @@ struct StockAdjustView: View {
     }
 
     private var canSave: Bool {
-        productId != nil && qtyKg > 0
+        productId != nil && qtyKg > 0 && type != .sale && type != .production
     }
 
     var body: some View {
@@ -322,6 +350,7 @@ struct StockAdjustView: View {
                         }
                     }
                     Picker("Type", selection: $type) {
+                        Text("Opening Stock").tag(StockMovement.MoveType.opening)
                         Text("Wastage").tag(StockMovement.MoveType.wastage)
                         Text("Adjustment In").tag(StockMovement.MoveType.adjustmentIn)
                         Text("Adjustment Out").tag(StockMovement.MoveType.adjustmentOut)
