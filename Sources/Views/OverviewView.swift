@@ -192,12 +192,12 @@ struct DayBar: Identifiable, Equatable {
 }
 
 extension OverviewView {
-    private static let chartDayFormatter: DateFormatter = {
+    nonisolated private static func chartDateLabel(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_IN")
         formatter.dateFormat = "d MMM"
-        return formatter
-    }()
+        return formatter.string(from: date)
+    }
 
     struct Snapshot: Equatable {
         var businessName = "Stone Crusher Business Unit"
@@ -319,7 +319,7 @@ extension OverviewView {
                 }
                 snapshot.chart = chartDays.map { day in
                     DayBar(
-                        label: chartDayFormatter.string(from: day),
+                        label: OverviewView.chartDateLabel(day),
                         productionKg: productionByDay[day] ?? 0,
                         salesPaise: salesByDay[day] ?? 0
                     )
