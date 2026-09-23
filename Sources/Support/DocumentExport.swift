@@ -18,6 +18,7 @@ enum DocumentExport {
         return data
     }
 
+    @MainActor
     static func save(_ data: Data, suggestedName: String, fileType: UTType) {
         guard data.count > 0 else { return }
         let panel = NSSavePanel()
@@ -29,6 +30,7 @@ enum DocumentExport {
         }
     }
 
+    @MainActor
     static func saveCSV(_ content: String, suggestedName: String) {
         let data = Data(content.utf8)
         save(data, suggestedName: suggestedName, fileType: .commaSeparatedText)
