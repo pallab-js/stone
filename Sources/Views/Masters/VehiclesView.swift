@@ -44,17 +44,20 @@ struct VehiclesView: View {
                 } label: {
                     Label("Add Vehicle", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     if let row = selectedRow { startEditing(row) }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
+                .keyboardShortcut("e", modifiers: .command)
                 .disabled(selection == nil)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [])
                 .disabled(selection == nil)
             }
         }
@@ -63,7 +66,7 @@ struct VehiclesView: View {
         }
         .destructiveConfirmation(
             title: "Delete vehicle?",
-            message: "Existing invoices keep their vehicle reference.",
+            message: "Unused vehicles are removed. Those used on invoices are deactivated instead — existing invoices keep their vehicle number.",
             destructiveLabel: "Delete",
             isPresented: $confirmDelete
         ) { deleteSelected() }
@@ -159,8 +162,11 @@ struct VehiclesView: View {
               let row = rows.first(where: { $0.id == id }),
               let vehicleID = row.vehicle.id else { return }
         do {
-            try db.dbQueue.write { db in
-                try Vehicle.deleteOne(db, key: vehicleID)
+            let outcome = try db.dbQueue.write { db in
+                try MasterDeletion.delete(Vehicle.self, id: vehicleID, db: db)
+            }
+            if outcome == .deactivated {
+                errorMessage = "“\(row.vehicle.number)” is used on invoices, so it was deactivated instead of deleted."
             }
             reload()
         } catch {
@@ -215,7 +221,7 @@ struct VehicleEditorView: View {
     }
 
     private var capacityKg: Int64 {
-        guard let tonnes = Double(capacity.trimmingCharacters(in: .whitespaces)) else { return 20_000 }
+        guard let tonnes = Format.parse(capacity) else { return 20_000 }
         return Int64((tonnes * 1000).rounded())
     }
 

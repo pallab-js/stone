@@ -17,6 +17,7 @@ struct ProductionModuleView: View {
     @State private var errorMessage: String?
     @State private var monthProductionKg: Int64 = 0
     @State private var monthDieselLitres: Double = 0
+    @State private var searchText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xl) {
@@ -47,6 +48,13 @@ struct ProductionModuleView: View {
                     message: "Record a shift — date, shift, machine hours, diesel used and what got crushed. Stock updates in the same step."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if filteredRows.isEmpty {
+                InlineEmptyState(
+                    icon: "magnifyingglass",
+                    title: "No matching batches",
+                    message: "Nothing matches “\(searchText)”. Try date, operator, shift or notes."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 table
             }
@@ -55,6 +63,7 @@ struct ProductionModuleView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Production")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search shift, operator or notes")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -62,17 +71,20 @@ struct ProductionModuleView: View {
                 } label: {
                     Label("Record Shift", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     if let row = selectedRow { startEditing(row) }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
+                .keyboardShortcut("e", modifiers: .command)
                 .disabled(selection == nil)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [])
                 .disabled(selection == nil)
             }
         }
@@ -141,7 +153,7 @@ struct ProductionModuleView: View {
                     .lineLimit(1)
             }
         } rows: {
-            ForEach(rows) { (row: ProductionBatchRow) in
+            ForEach(filteredRows) { (row: ProductionBatchRow) in
                 TableRow(row)
                     .contextMenu { rowContextMenu(row) }
             }
@@ -152,6 +164,17 @@ struct ProductionModuleView: View {
                 Button("Edit") { startEditing(row) }
             }
             Button("Delete", role: .destructive) { confirmDelete = true }
+        }
+    }
+
+    private var filteredRows: [ProductionBatchRow] {
+        guard !searchText.isEmpty else { return rows }
+        let query = searchText.trimmingCharacters(in: .whitespaces).localizedLowercase
+        return rows.filter { row in
+            "Shift \(row.batch.shift)".localizedLowercase.contains(query)
+                || (row.batch.operatorName?.localizedLowercase.contains(query) ?? false)
+                || (row.batch.notes?.localizedLowercase.contains(query) ?? false)
+                || Format.day(row.batch.date).localizedLowercase.contains(query)
         }
     }
 
@@ -246,8 +269,7 @@ struct ProductionLineDraft: Identifiable {
     var productId: Int64?
     var tonnesText = ""
     var qtyKg: Int64 {
-        let tonnes = Double(tonnesText.replacingOccurrences(of: ",", with: ".")) ?? 0
-        return Int64((tonnes * 1000).rounded())
+        Format.kg(fromTonnes: tonnesText)
     }
 }
 
@@ -430,8 +452,8 @@ struct ProductionEditorView: View {
     }
 
     private func saveBatch() -> Int64? {
-        let machineHours = Double(hoursText.replacingOccurrences(of: ",", with: "."))
-        let dieselLitres = Double(dieselText.replacingOccurrences(of: ",", with: "."))
+        let machineHours = Format.parse(hoursText)
+        let dieselLitres = Format.parse(dieselText)
         do {
             var savedID: Int64?
             try db.dbQueue.write { db in

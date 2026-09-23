@@ -44,17 +44,20 @@ struct SuppliersView: View {
                 } label: {
                     Label("Add Supplier", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     if let row = selectedRow { startEditing(row) }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
+                .keyboardShortcut("e", modifiers: .command)
                 .disabled(selection == nil)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [])
                 .disabled(selection == nil)
             }
         }
@@ -63,7 +66,7 @@ struct SuppliersView: View {
         }
         .destructiveConfirmation(
             title: "Delete supplier?",
-            message: "Existing purchase records keep their supplier snapshot.",
+            message: "Unused suppliers are removed. Those with purchase records are deactivated instead — existing purchases keep their supplier snapshot.",
             destructiveLabel: "Delete",
             isPresented: $confirmDelete
         ) { deleteSelected() }
@@ -149,8 +152,11 @@ struct SuppliersView: View {
               let row = rows.first(where: { $0.id == id }),
               let supplierID = row.supplier.id else { return }
         do {
-            try db.dbQueue.write { db in
-                try Supplier.deleteOne(db, key: supplierID)
+            let outcome = try db.dbQueue.write { db in
+                try MasterDeletion.delete(Supplier.self, id: supplierID, db: db)
+            }
+            if outcome == .deactivated {
+                errorMessage = "“\(row.supplier.name)” has purchase records, so it was deactivated instead of deleted."
             }
             reload()
         } catch {

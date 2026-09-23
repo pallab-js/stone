@@ -45,17 +45,20 @@ struct ProductsView: View {
                 } label: {
                     Label("Add Product", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     if let row = selectedRow { startEditing(row) }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
+                .keyboardShortcut("e", modifiers: .command)
                 .disabled(selection == nil)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [])
                 .disabled(selection == nil)
             }
         }
@@ -66,7 +69,7 @@ struct ProductsView: View {
         }
         .destructiveConfirmation(
             title: "Delete product?",
-            message: "This removes the product record. Existing invoices keep their own snapshots.",
+            message: "Unused products are removed. Products that appear in stock, production or invoice records are deactivated instead — existing records keep their snapshots.",
             destructiveLabel: "Delete",
             isPresented: $confirmDelete
         ) { deleteSelected() }
@@ -161,8 +164,11 @@ struct ProductsView: View {
               let row = rows.first(where: { $0.id == id }),
               let productID = row.product.id else { return }
         do {
-            try db.dbQueue.write { db in
-                try Product.deleteOne(db, key: productID)
+            let outcome = try db.dbQueue.write { db in
+                try MasterDeletion.delete(Product.self, id: productID, db: db)
+            }
+            if outcome == .deactivated {
+                errorMessage = "“\(row.product.name)” is used by stock, production or invoice records, so it was deactivated instead of deleted."
             }
             reload()
         } catch {
@@ -235,7 +241,7 @@ struct ProductEditorView: View {
     }
 
     private var ratePaise: Int64? {
-        guard let value = Double(ratePerTonne.trimmingCharacters(in: .whitespaces)) else { return nil }
+        guard let value = Format.parse(ratePerTonne) else { return nil }
         return Int64((value * 100).rounded())
     }
 
@@ -307,7 +313,7 @@ struct ProductEditorView: View {
                 product.gstRateBps = gstRateBps
                 product.sortOrder = sortOrder
                 product.isActive = isActive
-                product.cftFactor = Double(cftFactor)
+                product.cftFactor = Format.parse(cftFactor)
                 if product.id == nil {
                     product.createdAt = .now
                 }

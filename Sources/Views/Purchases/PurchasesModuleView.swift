@@ -15,6 +15,7 @@ struct PurchasesModuleView: View {
     @State private var confirmDelete = false
     @State private var errorMessage: String?
     @State private var monthExpensePaise: Int64 = 0
+    @State private var searchText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xl) {
@@ -39,6 +40,13 @@ struct PurchasesModuleView: View {
                     message: "Record every diesel purchase, electricity bill, royalty payment or parts purchase. Categories feed the dashboard and reports."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if filteredRows.isEmpty {
+                InlineEmptyState(
+                    icon: "magnifyingglass",
+                    title: "No matching expenses",
+                    message: "Nothing matches “\(searchText)”. Try category, supplier, detail or mode."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 table
             }
@@ -47,6 +55,7 @@ struct PurchasesModuleView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Purchases & Expenses")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search category, supplier or detail")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -54,17 +63,20 @@ struct PurchasesModuleView: View {
                 } label: {
                     Label("Record Expense", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     if let row = selectedRow { startEditing(row) }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
+                .keyboardShortcut("e", modifiers: .command)
                 .disabled(selection == nil)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [])
                 .disabled(selection == nil)
             }
         }
@@ -122,7 +134,7 @@ struct PurchasesModuleView: View {
             }
             .width(min: 110, ideal: 130)
         } rows: {
-            ForEach(rows) { (row: PurchaseRow) in
+            ForEach(filteredRows) { (row: PurchaseRow) in
                 TableRow(row)
                     .contextMenu { rowContextMenu(row) }
             }
@@ -141,6 +153,17 @@ struct PurchasesModuleView: View {
             return String(format: "%.0f L × ₹%.2f", litres, Double(rate) / 100)
         }
         return purchase.notes ?? ""
+    }
+
+    private var filteredRows: [PurchaseRow] {
+        guard !searchText.isEmpty else { return rows }
+        let query = searchText.trimmingCharacters(in: .whitespaces).localizedLowercase
+        return rows.filter { row in
+            row.purchase.category.label.localizedLowercase.contains(query)
+                || (row.supplierName?.localizedLowercase.contains(query) ?? false)
+                || detailText(row.purchase).localizedLowercase.contains(query)
+                || row.purchase.mode.label.localizedLowercase.contains(query)
+        }
     }
 
     private var selectedRow: PurchaseRow? {
@@ -245,7 +268,7 @@ struct PurchaseEditorView: View {
     }
 
     private var amountPaise: Int64 {
-        Int64((Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0) * 100)
+        Format.paise(amountText)
     }
 
     private var canSave: Bool {
@@ -281,8 +304,8 @@ struct PurchaseEditorView: View {
                     Section("Diesel detail") {
                         TextField("Litres", text: $qtyLitresText)
                         TextField("Rate per litre (₹)", text: $rateText)
-                        let litres = Double(qtyLitresText.replacingOccurrences(of: ",", with: ".")) ?? 0
-                        let rate = Double(rateText.replacingOccurrences(of: ",", with: ".")) ?? 0
+                        let litres = Format.parse(qtyLitresText) ?? 0
+                        let rate = Format.parse(rateText) ?? 0
                         Text("Auto amount: \(Format.rupees(litres * rate))")
                             .font(DS.Font.footnote)
                             .foregroundStyle(.secondary)
@@ -333,8 +356,8 @@ struct PurchaseEditorView: View {
     }
 
     private func save() {
-        let litres = Double(qtyLitresText.replacingOccurrences(of: ",", with: "."))
-        let rate = Double(rateText.replacingOccurrences(of: ",", with: "."))
+        let litres = Format.parse(qtyLitresText)
+        let rate = Format.parse(rateText)
         do {
             try db.dbQueue.write { db in
                 var purchase = context.purchase ?? Purchase(date: date, category: category, amountPaise: amountPaise)

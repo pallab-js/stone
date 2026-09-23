@@ -1,5 +1,6 @@
 import SwiftUI
 import GRDB
+import Charts
 
 struct StockBalanceRow: Identifiable, Equatable {
     var id: Int64 { productId }
@@ -43,20 +44,59 @@ struct StockModuleView: View {
                     tint: DS.Color.accent
                 )
 
+                if !topValuation.isEmpty {
+                    CardContainer {
+                        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+                            SectionHeading(title: "Valuation by product", count: topValuation.count)
+                            Chart(topValuation) { row in
+                                BarMark(
+                                    x: .value("Value", Double(row.valuePaise) / 100),
+                                    y: .value("Product", row.name)
+                                )
+                                .foregroundStyle(DS.Color.accent.opacity(0.85))
+                                .cornerRadius(3)
+                            }
+                            .chartXAxis {
+                                AxisMarks { value in
+                                    AxisGridLine()
+                                    if let rupees = value.as(Double.self) {
+                                        AxisValueLabel {
+                                            Text(Format.inrCompact(Int64(rupees * 100)))
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                            .chartYAxis {
+                                AxisMarks { _ in
+                                    AxisValueLabel()
+                                        .font(DS.Font.footnote)
+                                }
+                            }
+                            .frame(height: 200)
+                        }
+                    }
+                }
+
                 SectionHeading(title: "Stock on hand", count: balances.count)
                 if balances.isEmpty {
-                    Text("No products yet. Add products first.")
-                        .font(DS.Font.footnote)
-                        .foregroundStyle(.secondary)
+                    InlineEmptyState(
+                        icon: "shippingbox",
+                        title: "No stock on hand",
+                        message: "Add products, then record production or opening stock to see live balances here."
+                    )
                 } else {
                     balancesTable
                 }
 
                 SectionHeading(title: "Recent movements", count: movements.count)
                 if movements.isEmpty {
-                    Text("Stock movements appear here once production, sales or adjustments are recorded.")
-                        .font(DS.Font.footnote)
-                        .foregroundStyle(.secondary)
+                    InlineEmptyState(
+                        icon: "arrow.left.arrow.right",
+                        title: "No movements yet",
+                        message: "Stock movements appear here once production, sales or adjustments are recorded."
+                    )
                 } else {
                     movementsTable
                 }
@@ -74,11 +114,13 @@ struct StockModuleView: View {
                 } label: {
                     Label("Adjust Stock", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [])
                 .disabled(movementSelection == nil)
             }
         }
@@ -192,6 +234,15 @@ struct StockModuleView: View {
 
     private var totalValuePaise: Int64 {
         balances.reduce(0) { $0 + $1.valuePaise }
+    }
+
+    private var topValuation: [StockBalanceRow] {
+        Array(
+            balances
+                .filter { $0.valuePaise > 0 }
+                .sorted { $0.valuePaise > $1.valuePaise }
+                .prefix(8)
+        )
     }
 
     private func deleteSelected() {
@@ -318,8 +369,7 @@ struct StockAdjustView: View {
     }
 
     private var qtyKg: Int64 {
-        let tonnes = Double(tonnesText.replacingOccurrences(of: ",", with: ".")) ?? 0
-        return Int64((tonnes * 1000).rounded())
+        Format.kg(fromTonnes: tonnesText)
     }
 
     private var signedKg: Int64 {

@@ -7,18 +7,25 @@ struct SalesInvoiceRow: Identifiable, Equatable {
     var customerName: String
     var vehicleNumber: String?
     var tonnesKg: Int64
+    var paidPaise: Int64
+
+    var duePaise: Int64 { max(0, invoice.grandTotalPaise - paidPaise) }
 }
 
 enum InvoiceNumber {
     static func next(db: Database) throws -> String {
         let year = Calendar.autoupdatingCurrent.component(.year, from: .now)
         let prefix = "INV-\(year)-"
-        let count = try Int.fetchOne(
+        // Take the MAX existing number for this year so deletion never makes
+        // the next number collide with an existing invoice.
+        if let maxNo = try String.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM salesInvoices WHERE invoiceNo LIKE ?",
+            sql: "SELECT MAX(invoiceNo) FROM salesInvoices WHERE invoiceNo LIKE ?",
             arguments: [prefix + "%"]
-        ) ?? 0
-        return String(format: "%@%04d", prefix, count + 1)
+        ), let last = maxNo.split(separator: "-").last, let number = Int(last) {
+            return String(format: "%@%04d", prefix, number + 1)
+        }
+        return String(format: "%@%04d", prefix, 1)
     }
 }
 
@@ -31,6 +38,7 @@ struct SalesModuleView: View {
     @State private var errorMessage: String?
     @State private var previewData: InvoiceDocumentData?
     @State private var showPreview = false
+    @State private var searchText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xl) {
@@ -46,6 +54,13 @@ struct SalesModuleView: View {
                     message: "Create a tax invoice for a dispatch — enter the products, quantities, selling rate and transport charge. GST is computed automatically."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if filteredRows.isEmpty {
+                InlineEmptyState(
+                    icon: "magnifyingglass",
+                    title: "No matching invoices",
+                    message: "Nothing matches “\(searchText)”. Try invoice number, customer name or vehicle number."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 table
             }
@@ -54,6 +69,7 @@ struct SalesModuleView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Sales & Invoices")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search invoice no, customer or vehicle")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -61,24 +77,27 @@ struct SalesModuleView: View {
                 } label: {
                     Label("New Invoice", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     if let row = selectedRow { previewInvoice(row.invoice) }
                 } label: {
                     Label("PDF Preview", systemImage: "doc.richtext")
                 }
-                .disabled(selection == nil)
+                .disabled(selection == nil || selectedRow?.invoice.status == .cancelled)
                 Button {
                     if let row = selectedRow { startEditing(row) }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
-                .disabled(selection == nil)
+                .keyboardShortcut("e", modifiers: .command)
+                .disabled(selection == nil || selectedRow?.invoice.status == .cancelled)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label("Cancel Invoice", systemImage: "trash")
                 }
-                .disabled(selection == nil)
+                .keyboardShortcut(.delete, modifiers: [])
+                .disabled(selection == nil || selectedRow?.invoice.status == .cancelled)
             }
         }
         .sheet(item: $editor) { context in
@@ -91,10 +110,10 @@ struct SalesModuleView: View {
         }
         .destructiveConfirmation(
             title: "Cancel this invoice?",
-            message: "The invoiced quantity will be returned to stock. Invoices with recorded payments cannot be deleted.",
+            message: "It will be marked cancelled, excluded from all sales and receivable figures, and its quantity returned to stock. Invoices with recorded payments cannot be cancelled.",
             destructiveLabel: "Cancel Invoice",
             isPresented: $confirmDelete
-        ) { deleteSelected() }
+        ) { cancelSelected() }
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -104,6 +123,16 @@ struct SalesModuleView: View {
             Text(errorMessage ?? "")
         }
         .task { reload() }
+    }
+
+    private var filteredRows: [SalesInvoiceRow] {
+        guard !searchText.isEmpty else { return rows }
+        let query = searchText.trimmingCharacters(in: .whitespaces).localizedLowercase
+        return rows.filter { row in
+            row.invoice.invoiceNo.localizedLowercase.contains(query)
+                || row.customerName.localizedLowercase.contains(query)
+                || (row.vehicleNumber?.localizedLowercase.contains(query) ?? false)
+        }
     }
 
     @ViewBuilder
@@ -136,7 +165,7 @@ struct SalesModuleView: View {
             TableColumn("Status") { row in
                 Badge(
                     text: row.invoice.status.label,
-                    tint: row.invoice.status == .dispatched ? DS.Color.success : DS.Color.info
+                    tint: statusTint(row.invoice.status)
                 )
             }
             .width(min: 90, ideal: 100)
@@ -145,18 +174,38 @@ struct SalesModuleView: View {
                     .font(DS.Font.tableValue)
             }
             .width(min: 110, ideal: 130)
+            TableColumn("Paid") { row in
+                Text(Format.inr(row.paidPaise))
+                    .font(DS.Font.tableValue)
+                    .foregroundStyle(.secondary)
+            }
+            .width(min: 100, ideal: 120)
+            TableColumn("Due") { row in
+                if row.invoice.status == .cancelled {
+                    Text("—").foregroundStyle(.tertiary)
+                } else if row.duePaise > 0 {
+                    Text(Format.inr(row.duePaise))
+                        .font(DS.Font.tableValue)
+                        .foregroundStyle(dueTint(row.duePaise))
+                } else {
+                    Text("Settled")
+                        .font(DS.Font.footnote)
+                        .foregroundStyle(DS.Color.success)
+                }
+            }
+            .width(min: 100, ideal: 120)
         } rows: {
-            ForEach(rows) { (row: SalesInvoiceRow) in
+            ForEach(filteredRows) { (row: SalesInvoiceRow) in
                 TableRow(row)
                     .contextMenu { rowContextMenu(row) }
             }
         }
         .alternatingRowBackgrounds()
         .contextMenu(forSelectionType: Int64.self) { selections in
-            if let id = selections.first, let row = rows.first(where: { $0.id == id }) {
+            if let id = selections.first, let row = rows.first(where: { $0.id == id }), row.invoice.status != .cancelled {
                 Button("Edit") { startEditing(row) }
+                Button("Cancel Invoice", role: .destructive) { confirmDelete = true }
             }
-            Button("Cancel Invoice", role: .destructive) { confirmDelete = true }
         }
     }
 
@@ -183,33 +232,50 @@ struct SalesModuleView: View {
 
     private func rowContextMenu(_ row: SalesInvoiceRow) -> some View {
         Group {
-            Button("Edit") { startEditing(row) }
-            Button("Cancel Invoice", role: .destructive) {
-                selection = row.id
-                confirmDelete = true
+            if row.invoice.status != .cancelled {
+                Button("Edit") { startEditing(row) }
+                Button("Cancel Invoice", role: .destructive) {
+                    selection = row.id
+                    confirmDelete = true
+                }
             }
         }
     }
 
-    private func deleteSelected() {
+    private func statusTint(_ status: SalesInvoice.Status) -> SwiftUI.Color {
+        switch status {
+        case .dispatched: DS.Color.success
+        case .cancelled: DS.Color.danger
+        case .drafted: DS.Color.info
+        }
+    }
+
+    private func dueTint(_ duePaise: Int64) -> SwiftUI.Color {
+        if duePaise == 0 { return DS.Color.success }
+        return DS.Color.danger
+    }
+
+    private func cancelSelected() {
         guard let id = selection,
-              let invoiceID = rows.first(where: { $0.id == id })?.invoice.id else { return }
+              let row = rows.first(where: { $0.id == id }),
+              let invoiceID = row.invoice.id,
+              row.invoice.status != .cancelled else { return }
         do {
-            let canDelete = try db.dbQueue.read { db in
+            let canCancel = try db.dbQueue.read { db in
                 try Payment.filter(Column("invoiceId") == invoiceID).fetchCount(db) == 0
             }
-            guard canDelete else {
+            guard canCancel else {
                 errorMessage = "This invoice has payments recorded against it. Cancel or adjust the payments first."
                 return
             }
             try db.dbQueue.write { db in
+                var invoice = try SalesInvoice.fetchOne(db, key: invoiceID)
+                invoice?.status = .cancelled
+                if let invoice { try invoice.update(db) }
                 try StockMovement
                     .filter(Column("type") == StockMovement.MoveType.sale.rawValue)
                     .filter(Column("refId") == invoiceID)
                     .deleteAll(db)
-                try DispatchDetail.filter(Column("invoiceId") == invoiceID).deleteAll(db)
-                try InvoiceItem.filter(Column("invoiceId") == invoiceID).deleteAll(db)
-                try SalesInvoice.deleteOne(db, key: invoiceID)
             }
             reload()
         } catch {
@@ -247,12 +313,26 @@ struct SalesModuleView: View {
                         qtyByInvoice[row.invoiceId] = row.qtyKg
                     }
                 }
+                struct PaidRow: Decodable, FetchableRecord {
+                    var invoiceId: Int64
+                    var amountPaise: Int64
+                }
+                let paidRows = try PaidRow.fetchAll(
+                    db,
+                    sql: "SELECT invoiceId, SUM(amountPaise) AS amountPaise FROM payments WHERE partyType = ? AND invoiceId IS NOT NULL GROUP BY invoiceId",
+                    arguments: [Payment.PartyType.customer.rawValue]
+                )
+                var paidByInvoice: [Int64: Int64] = [:]
+                for row in paidRows {
+                    paidByInvoice[row.invoiceId] = row.amountPaise
+                }
                 return invoices.map { invoice in
                     SalesInvoiceRow(
                         invoice: invoice,
                         customerName: customerName[invoice.customerId] ?? "Unknown",
                         vehicleNumber: invoice.vehicleId.flatMap { vehicleNumber[$0] },
-                        tonnesKg: qtyByInvoice[invoice.id ?? 0] ?? 0
+                        tonnesKg: qtyByInvoice[invoice.id ?? 0] ?? 0,
+                        paidPaise: paidByInvoice[invoice.id ?? 0] ?? 0
                     )
                 }
             }
@@ -278,13 +358,11 @@ struct InvoiceLineDraft: Identifiable {
     var rateText = ""
 
     var qtyKg: Int64 {
-        let tonnes = Double(tonnesText.replacingOccurrences(of: ",", with: ".")) ?? 0
-        return Int64((tonnes * 1000).rounded())
+        Format.kg(fromTonnes: tonnesText)
     }
 
     var ratePaisePerTonne: Int64 {
-        let rupees = Double(rateText.replacingOccurrences(of: ",", with: ".")) ?? 0
-        return Int64((rupees * 100).rounded())
+        Format.paise(rateText)
     }
 
     var amountPaise: Int64 {
@@ -318,6 +396,11 @@ struct SalesEditorView: View {
     @State private var latestRates: [Int64: Int64] = [:]
     @State private var productById: [Int64: Product] = [:]
     @State private var businessState = ""
+    @State private var tareText = ""
+    @State private var grossText = ""
+    @State private var loadedByText = ""
+    @State private var timeOutEnabled = false
+    @State private var timeOut = Date()
     @State private var errorMessage: String?
 
     init(context: SalesEditorContext, onSave: @escaping () -> Void) {
@@ -425,7 +508,20 @@ struct SalesEditorView: View {
                     TextField("Discount (₹)", text: $discountText)
                 }
 
-                Section("Dispatch reading") {
+                Section("Dispatch & weighbridge") {
+                    TextField("Tare weight (kg)", text: $tareText)
+                    TextField("Gross weight (kg)", text: $grossText)
+                    TextField("Loaded by", text: $loadedByText)
+                    Toggle("Record time out", isOn: $timeOutEnabled)
+                    if timeOutEnabled {
+                        DatePicker("Time out", selection: $timeOut, displayedComponents: [.date, .hourAndMinute])
+                    }
+                    Text("Net weight: \(Format.tonnesLabel(dispatchNetKg))")
+                        .font(DS.Font.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Remarks") {
                     TextField("Remarks", text: $remarks, axis: .vertical)
                         .lineLimit(1...3)
                 }
@@ -461,12 +557,30 @@ struct SalesEditorView: View {
         customerId != nil && lines.contains { $0.qtyKg > 0 && $0.ratePaisePerTonne > 0 }
     }
 
+    private var tareKg: Int64? {
+        parseKg(tareText)
+    }
+
+    private var grossKg: Int64? {
+        parseKg(grossText)
+    }
+
+    private var dispatchNetKg: Int64 {
+        if let tare = tareKg, let gross = grossKg, gross > tare { return gross - tare }
+        return lines.reduce(0) { $0 + $1.qtyKg }
+    }
+
+    private func parseKg(_ text: String) -> Int64? {
+        guard let value = Format.parse(text), value > 0 else { return nil }
+        return Int64(value.rounded())
+    }
+
     private var transportPaise: Int64 {
-        Int64((Double(transportText.replacingOccurrences(of: ",", with: ".")) ?? 0) * 100)
+        Format.paise(transportText)
     }
 
     private var discountPaise: Int64 {
-        Int64((Double(discountText.replacingOccurrences(of: ",", with: ".")) ?? 0) * 100)
+        Format.paise(discountText)
     }
 
     private var subtotalPaise: Int64 {
@@ -639,7 +753,10 @@ struct SalesEditorView: View {
                 state = result.businessState
             }
 
-            if context.invoice != nil { loadExistingLines() }
+            if context.invoice != nil {
+                loadExistingLines()
+                loadExistingDispatch()
+            }
             else if lines.isEmpty, let first = products.first {
                 let rate = latestRates[first.id ?? 0]
                 lines.append(
@@ -675,7 +792,29 @@ struct SalesEditorView: View {
         }
     }
 
+    private func loadExistingDispatch() {
+        guard let invoiceID = context.invoice?.id else { return }
+        do {
+            guard let existing = try db.dbQueue.read({ db in
+                try DispatchDetail.filter(Column("invoiceId") == invoiceID).fetchOne(db)
+            }) else { return }
+            if let tare = existing.tareKg { tareText = String(tare) }
+            if let gross = existing.grossKg { grossText = String(gross) }
+            loadedByText = existing.loadedBy ?? ""
+            if let savedTimeOut = existing.timeOut {
+                timeOutEnabled = true
+                timeOut = savedTimeOut
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func save() {
+        if let existing = context.invoice, existing.status == .cancelled {
+            errorMessage = "Cancelled invoices cannot be edited. Create a new invoice instead."
+            return
+        }
         guard let customerID = customerId else { return }
         do {
             try db.dbQueue.write { db in
@@ -757,7 +896,11 @@ struct SalesEditorView: View {
 
                 var dispatch = DispatchDetail(
                     invoiceId: invoiceID,
-                    netKg: lines.reduce(0) { $0 + $1.qtyKg }
+                    tareKg: tareKg,
+                    grossKg: grossKg,
+                    netKg: dispatchNetKg,
+                    loadedBy: trimmedNil(loadedByText),
+                    timeOut: timeOutEnabled ? timeOut : nil
                 )
                 try dispatch.insert(db)
             }

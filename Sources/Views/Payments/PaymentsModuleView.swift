@@ -15,6 +15,7 @@ struct PaymentsModuleView: View {
     @State private var editor: PaymentEditorContext?
     @State private var confirmDelete = false
     @State private var errorMessage: String?
+    @State private var searchText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xl) {
@@ -30,6 +31,13 @@ struct PaymentsModuleView: View {
                     message: "Record money received from customers or paid out to suppliers. Receivables and payables stay in sync automatically."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if filteredRows.isEmpty {
+                InlineEmptyState(
+                    icon: "magnifyingglass",
+                    title: "No matching payments",
+                    message: "Nothing matches “\(searchText)”. Try party name, invoice or reference number."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 table
             }
@@ -38,6 +46,7 @@ struct PaymentsModuleView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Payments")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search party, invoice or reference")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -45,17 +54,20 @@ struct PaymentsModuleView: View {
                 } label: {
                     Label("Record Payment", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     if let row = selectedRow { startEditing(row) }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
+                .keyboardShortcut("e", modifiers: .command)
                 .disabled(selection == nil)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [])
                 .disabled(selection == nil)
             }
         }
@@ -121,7 +133,7 @@ struct PaymentsModuleView: View {
             }
             .width(min: 110, ideal: 130)
         } rows: {
-            ForEach(rows) { (row: PaymentRow) in
+            ForEach(filteredRows) { (row: PaymentRow) in
                 TableRow(row)
                     .contextMenu { rowContextMenu(row) }
             }
@@ -132,6 +144,17 @@ struct PaymentsModuleView: View {
                 Button("Edit") { startEditing(row) }
             }
             Button("Delete", role: .destructive) { confirmDelete = true }
+        }
+    }
+
+    private var filteredRows: [PaymentRow] {
+        guard !searchText.isEmpty else { return rows }
+        let query = searchText.trimmingCharacters(in: .whitespaces).localizedLowercase
+        return rows.filter { row in
+            row.partyName.localizedLowercase.contains(query)
+                || (row.invoiceNo?.localizedLowercase.contains(query) ?? false)
+                || (row.payment.refNo?.localizedLowercase.contains(query) ?? false)
+                || row.payment.mode.label.localizedLowercase.contains(query)
         }
     }
 
@@ -246,7 +269,7 @@ struct PaymentEditorView: View {
     }
 
     private var amountPaise: Int64 {
-        Int64((Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0) * 100)
+        Format.paise(amountText)
     }
 
     private var canSave: Bool {
@@ -343,7 +366,10 @@ struct PaymentEditorView: View {
             let loaded = try db.dbQueue.read { db -> (customers: [Customer], suppliers: [Supplier], invoices: [SalesInvoice]) in
                 let customers = try Customer.filter(Column("isActive") == true).order(Column("name")).fetchAll(db)
                 let suppliers = try Supplier.filter(Column("isActive") == true).order(Column("name")).fetchAll(db)
-                let invoices = try SalesInvoice.order(Column("date").desc, Column("id").desc).fetchAll(db)
+                let invoices = try SalesInvoice
+                    .filter(Column("status") != SalesInvoice.Status.cancelled.rawValue)
+                    .order(Column("date").desc, Column("id").desc)
+                    .fetchAll(db)
                 return (customers, suppliers, invoices)
             }
             customers = loaded.customers

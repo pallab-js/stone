@@ -140,6 +140,34 @@ struct EmptyStateView: View {
     }
 }
 
+/// Compact empty state for use inside cards or scrolled sections where
+/// `EmptyStateView`'s `.frame(maxHeight: .infinity)` would expand unbounded.
+struct InlineEmptyState: View {
+    let icon: String
+    let title: String
+    var message: String? = nil
+
+    var body: some View {
+        VStack(spacing: DS.Spacing.s) {
+            Image(systemName: icon)
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(DS.Color.accent.opacity(0.6))
+            Text(title)
+                .font(DS.Font.bodySemibold)
+                .foregroundStyle(.secondary)
+            if let message {
+                Text(message)
+                    .font(DS.Font.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, DS.Spacing.xl)
+    }
+}
+
 struct PhasePlaceholderView: View {
     let module: String
     let phase: String

@@ -31,4 +31,30 @@ final class FormattingTests: XCTestCase {
     func testRupeesWithoutSymbol() {
         XCTAssertEqual(Format.rupeesWithoutSymbol(150_000_00), "1,50,000.00")
     }
+
+    func testParseHandlesIndianDigitGrouping() {
+        XCTAssertEqual(Format.parse("15,000"), 15_000)
+        XCTAssertEqual(Format.parse("1,50,000"), 150_000)
+        XCTAssertEqual(Format.parse("1,50,000.50"), 150_000.5)
+        XCTAssertEqual(Format.parse("15000"), 15_000)
+        XCTAssertEqual(Format.parse(" 12.5 "), 12.5)
+        XCTAssertNil(Format.parse(""))
+        XCTAssertNil(Format.parse("   "))
+        XCTAssertNil(Format.parse("abc"))
+    }
+
+    func testPaiseParsesGroupedRupees() {
+        XCTAssertEqual(Format.paise("15,000"), 1_500_000)   // ₹15,000 not ₹15
+        XCTAssertEqual(Format.paise("1,23,456.78"), 1_23_45_678)
+        XCTAssertEqual(Format.paise("0"), 0)
+        XCTAssertEqual(Format.paise(""), 0)
+        XCTAssertEqual(Format.paise("garbage"), 0)
+    }
+
+    func testTonnesToKilograms() {
+        XCTAssertEqual(Format.kg(fromTonnes: "12.5"), 12_500)
+        XCTAssertEqual(Format.kg(fromTonnes: "1,000"), 1_000_000)
+        XCTAssertEqual(Format.kg(fromTonnes: "0.001"), 1)
+        XCTAssertEqual(Format.kg(fromTonnes: ""), 0)
+    }
 }

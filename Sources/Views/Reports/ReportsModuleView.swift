@@ -1,5 +1,6 @@
 import SwiftUI
 import GRDB
+import Charts
 
 struct ProductReportRow: Identifiable, Equatable {
     var id: Int64 { productId }
@@ -8,6 +9,13 @@ struct ProductReportRow: Identifiable, Equatable {
     var producedKg: Int64
     var soldKg: Int64
     var onHandKg: Int64
+}
+
+struct MonthlyTrendRow: Identifiable, Equatable {
+    var id: String { label }
+    var label: String
+    var producedKg: Int64
+    var soldKg: Int64
 }
 
 struct CategoryReportRow: Identifiable, Equatable {
@@ -31,12 +39,24 @@ struct AgingCustomerRow: Identifiable, Equatable {
     var ageDays: Int
 }
 
+enum ReportPeriod: String, CaseIterable, Identifiable {
+    case last30 = "30 days"
+    case month = "This month"
+    case quarter = "This quarter"
+    case year = "This year"
+    case all = "All time"
+
+    var id: String { rawValue }
+}
+
 struct ReportsModuleView: View {
     @Environment(\.appDatabase) private var db
     @State private var startDate: Date
     @State private var endDate: Date
+    @State private var period: ReportPeriod? = .month
     @State private var data: ReportData = ReportData()
     @State private var errorMessage: String?
+    @State private var applyingPeriod = false
 
     init() {
         let calendar = Calendar.current
@@ -53,14 +73,35 @@ struct ReportsModuleView: View {
                     subtitle: "Period-based production, sales, expenses and GST summaries."
                 )
 
-                HStack(spacing: DS.Spacing.m) {
-                    DatePicker("From", selection: $startDate, displayedComponents: .date)
-                    DatePicker("To", selection: $endDate, displayedComponents: .date)
-                    Button("Refresh") { reload() }
-                        .buttonStyle(.borderedProminent)
+                VStack(alignment: .leading, spacing: DS.Spacing.m) {
+                    HStack(spacing: DS.Spacing.m) {
+                        DatePicker("From", selection: $startDate, displayedComponents: .date)
+                        DatePicker("To", selection: $endDate, displayedComponents: .date)
+                        Button("Refresh") { reload() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    Picker("Period", selection: $period) {
+                        ForEach(ReportPeriod.allCases) { preset in
+                            Text(preset.rawValue).tag(preset as ReportPeriod?)
+                        }
+                        Text("Custom").tag(ReportPeriod?.none)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 520)
+                    .onChange(of: period) { _, newValue in
+                        applyPeriod(newValue)
+                    }
                 }
-                .onChange(of: startDate) { _, _ in reload() }
-                .onChange(of: endDate) { _, _ in reload() }
+                .onChange(of: startDate) { _, _ in
+                    guard !applyingPeriod else { return }
+                    period = nil
+                    reload()
+                }
+                .onChange(of: endDate) { _, _ in
+                    guard !applyingPeriod else { return }
+                    period = nil
+                    reload()
+                }
 
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 215), spacing: DS.Spacing.m, alignment: .top)],
@@ -93,24 +134,75 @@ struct ReportsModuleView: View {
                     )
                 }
 
-                CardContainer {
-                    VStack(alignment: .leading, spacing: DS.Spacing.m) {
-                        SectionHeading(title: "Mini P&L")
-                        plRow("Sales", data.salesPaise, tint: .primary)
-                        plRow("Expenses", data.expensesPaise, tint: .primary)
-                        Divider()
-                        HStack {
-                            Text("Net")
-                                .font(DS.Font.bodySemibold)
-                            Spacer()
-                            Text(Format.inr(data.netPaise))
-                                .font(DS.Font.kpiValue)
-                                .foregroundStyle(data.netPaise >= 0 ? DS.Color.success : DS.Color.danger)
-                        }
+                if !data.hasPeriodActivity {
+                    CardContainer(padding: DS.Spacing.m) {
+                        InlineEmptyState(
+                            icon: "calendar.badge.exclamationmark",
+                            title: "Nothing in this period",
+                            message: "No production, sales or expenses fall between the selected dates. Try widening the date range."
+                        )
                     }
                 }
 
-                HStack(alignment: .top, spacing: DS.Spacing.m) {
+                CardContainer {
+                    VStack(alignment: .leading, spacing: DS.Spacing.m) {
+                        SectionHeading(title: "Last 6 months · production vs sales")
+                        Chart {
+                            ForEach(data.monthlyTrend) { point in
+                                BarMark(
+                                    x: .value("Month", point.label),
+                                    y: .value("Tonnes", Double(point.producedKg) / 1000)
+                                )
+                                .foregroundStyle(DS.Color.info)
+                                .position(by: .value("Series", "Produced"))
+                                .cornerRadius(2)
+                                BarMark(
+                                    x: .value("Month", point.label),
+                                    y: .value("Tonnes", Double(point.soldKg) / 1000)
+                                )
+                                .foregroundStyle(DS.Color.success)
+                                .position(by: .value("Series", "Sold"))
+                                .cornerRadius(2)
+                            }
+                        }
+                        .chartForegroundStyleScale([
+                            "Produced": DS.Color.info,
+                            "Sold": DS.Color.success
+                        ])
+                        .frame(height: 220)
+                        HStack(spacing: DS.Spacing.lg) {
+                            Label("Produced", systemImage: "square.fill")
+                                .foregroundStyle(DS.Color.info)
+                            Label("Sold", systemImage: "square.fill")
+                                .foregroundStyle(DS.Color.success)
+                            Spacer()
+                        }
+                        .font(DS.Font.footnote)
+                    }
+                }
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 340), spacing: DS.Spacing.m, alignment: .top)],
+                    spacing: DS.Spacing.m
+                ) {
+                    CardContainer {
+                        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+                            SectionHeading(title: "Mini P&L")
+                            plRow("Sales", data.salesPaise, tint: .primary)
+                            plRow("Expenses", data.expensesPaise, tint: .primary)
+                            Divider()
+                            HStack {
+                                Text("Net")
+                                    .font(DS.Font.bodySemibold)
+                                Spacer()
+                                Text(Format.inr(data.netPaise))
+                                    .font(DS.Font.kpiValue)
+                                    .foregroundStyle(data.netPaise >= 0 ? DS.Color.success : DS.Color.danger)
+                            }
+                        }
+                    }
+                    .frame(minHeight: 232, alignment: .top)
+
                     CardContainer {
                         VStack(alignment: .leading, spacing: DS.Spacing.m) {
                             SectionHeading(title: "GST summary")
@@ -127,29 +219,8 @@ struct ReportsModuleView: View {
                             }
                         }
                     }
-                    .frame(width: 320)
+                    .frame(minHeight: 232, alignment: .top)
 
-                    CardContainer {
-                        VStack(alignment: .leading, spacing: DS.Spacing.m) {
-                            SectionHeading(title: "Expenses by category", count: data.expenseByCategory.count)
-                            ForEach(data.expenseByCategory) { row in
-                                HStack {
-                                    Badge(
-                                        text: Purchase.Category(rawValue: row.category)?.label ?? row.category,
-                                        tint: DS.Color.warning
-                                    )
-                                    Spacer()
-                                    Text(Format.inr(row.amountPaise))
-                                        .font(DS.Font.tableValue)
-                                }
-                                .padding(.vertical, DS.Spacing.xs)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: 420)
-                }
-
-                HStack(alignment: .top, spacing: DS.Spacing.m) {
                     CardContainer {
                         VStack(alignment: .leading, spacing: DS.Spacing.m) {
                             SectionHeading(title: "Receivables aging")
@@ -167,13 +238,39 @@ struct ReportsModuleView: View {
                                 .padding(.vertical, DS.Spacing.xs)
                             }
                             if data.agingBuckets.allSatisfy({ $0.count == 0 }) {
-                                Text("No outstanding invoices for the current data.")
+                                Text(data.totalInvoices == 0 ? "No invoices recorded yet." : "No outstanding invoices on record.")
                                     .font(DS.Font.footnote)
                                     .foregroundStyle(.secondary)
                             }
                         }
                     }
-                    .frame(width: 420)
+                    .frame(minHeight: 232, alignment: .top)
+
+                    CardContainer {
+                        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+                            SectionHeading(title: "Expenses by category", count: data.expenseByCategory.count)
+                            if data.expenseByCategory.isEmpty {
+                                InlineEmptyState(
+                                    icon: "cart",
+                                    title: "No expenses in this period",
+                                    message: "Record diesel, royalty, parts and other spend to see it broken down by category."
+                                )
+                            } else {
+                                ForEach(data.expenseByCategory) { row in
+                                    HStack {
+                                        Badge(
+                                            text: Purchase.Category(rawValue: row.category)?.label ?? row.category,
+                                            tint: DS.Color.warning
+                                        )
+                                        Spacer()
+                                        Text(Format.inr(row.amountPaise))
+                                            .font(DS.Font.tableValue)
+                                    }
+                                    .padding(.vertical, DS.Spacing.xs)
+                                }
+                            }
+                        }
+                    }
 
                     CardContainer {
                         VStack(alignment: .leading, spacing: DS.Spacing.m) {
@@ -194,17 +291,24 @@ struct ReportsModuleView: View {
                                 .padding(.vertical, DS.Spacing.xs)
                             }
                             if data.agingCustomers.isEmpty {
-                                Text("All invoices are settled.")
+                                Text(data.totalInvoices == 0 ? "No invoices recorded yet." : "All invoices are settled.")
                                     .font(DS.Font.footnote)
                                     .foregroundStyle(.secondary)
                             }
                         }
                     }
-                    .frame(maxWidth: 460)
                 }
 
                 SectionHeading(title: "Production & sales by product", count: data.byProduct.count)
-                productTable
+                if data.byProduct.isEmpty {
+                    InlineEmptyState(
+                        icon: "cube.box",
+                        title: "No products yet",
+                        message: "Add products to track production and sales per aggregate."
+                    )
+                } else {
+                    productTable
+                }
             }
             .padding(DS.Spacing.xl)
             .frame(maxWidth: 1280)
@@ -328,6 +432,32 @@ struct ReportsModuleView: View {
         DocumentExport.saveCSV(content, suggestedName: name)
     }
 
+    private func applyPeriod(_ preset: ReportPeriod?) {
+        guard let preset else { return }
+        let calendar = Calendar.current
+        let now = Date.now
+        var start: Date
+        switch preset {
+        case .last30:
+            start = calendar.date(byAdding: .day, value: -29, to: calendar.startOfDay(for: now)) ?? now
+        case .month:
+            start = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+        case .quarter:
+            let month = calendar.component(.month, from: now)
+            let quarterStartMonth = ((month - 1) / 3) * 3 + 1
+            start = calendar.date(from: DateComponents(year: calendar.component(.year, from: now), month: quarterStartMonth)) ?? now
+        case .year:
+            start = calendar.date(from: DateComponents(year: calendar.component(.year, from: now))) ?? now
+        case .all:
+            start = calendar.date(byAdding: .year, value: -50, to: now) ?? now
+        }
+        applyingPeriod = true
+        startDate = start
+        endDate = now
+        DispatchQueue.main.async { applyingPeriod = false }
+        reload()
+    }
+
     private func reload() {
         let from = Calendar.current.startOfDay(for: startDate)
         let to = Calendar.current.startOfDay(for: endDate)
@@ -335,6 +465,7 @@ struct ReportsModuleView: View {
         do {
             data = try db.dbQueue.read { db in
                 var report = ReportData()
+                let cancelled = SalesInvoice.Status.cancelled.rawValue
 
                 struct AggRow: Decodable, FetchableRecord {
                     var productId: Int64
@@ -352,8 +483,8 @@ struct ReportsModuleView: View {
                 ) ?? 0
                 report.salesPaise = try Int64.fetchOne(
                     db,
-                    sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices WHERE date >= ? AND date < ?",
-                    arguments: [from, next]
+                    sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices WHERE status != ? AND date >= ? AND date < ?",
+                    arguments: [cancelled, from, next]
                 ) ?? 0
                 report.expensesPaise = try Int64.fetchOne(
                     db,
@@ -366,26 +497,32 @@ struct ReportsModuleView: View {
                     arguments: [Payment.PartyType.customer.rawValue, from, next]
                 ) ?? 0
 
-                report.invoiceCount = try SalesInvoice.filter(Column("date") >= from && Column("date") < next).fetchCount(db)
+                report.invoiceCount = try SalesInvoice
+                    .filter(Column("date") >= from && Column("date") < next)
+                    .filter(Column("status") != cancelled)
+                    .fetchCount(db)
+                report.totalInvoices = try SalesInvoice
+                    .filter(Column("status") != cancelled)
+                    .fetchCount(db)
                 report.taxablePaise = try Int64.fetchOne(
                     db,
-                    sql: "SELECT COALESCE(SUM(subtotalPaise), 0) FROM salesInvoices WHERE date >= ? AND date < ?",
-                    arguments: [from, next]
+                    sql: "SELECT COALESCE(SUM(subtotalPaise), 0) FROM salesInvoices WHERE status != ? AND date >= ? AND date < ?",
+                    arguments: [cancelled, from, next]
                 ) ?? 0
                 report.cgstPaise = try Int64.fetchOne(
                     db,
-                    sql: "SELECT COALESCE(SUM(cgstPaise), 0) FROM salesInvoices WHERE date >= ? AND date < ?",
-                    arguments: [from, next]
+                    sql: "SELECT COALESCE(SUM(cgstPaise), 0) FROM salesInvoices WHERE status != ? AND date >= ? AND date < ?",
+                    arguments: [cancelled, from, next]
                 ) ?? 0
                 report.sgstPaise = try Int64.fetchOne(
                     db,
-                    sql: "SELECT COALESCE(SUM(sgstPaise), 0) FROM salesInvoices WHERE date >= ? AND date < ?",
-                    arguments: [from, next]
+                    sql: "SELECT COALESCE(SUM(sgstPaise), 0) FROM salesInvoices WHERE status != ? AND date >= ? AND date < ?",
+                    arguments: [cancelled, from, next]
                 ) ?? 0
                 report.igstPaise = try Int64.fetchOne(
                     db,
-                    sql: "SELECT COALESCE(SUM(igstPaise), 0) FROM salesInvoices WHERE date >= ? AND date < ?",
-                    arguments: [from, next]
+                    sql: "SELECT COALESCE(SUM(igstPaise), 0) FROM salesInvoices WHERE status != ? AND date >= ? AND date < ?",
+                    arguments: [cancelled, from, next]
                 ) ?? 0
 
                 struct CatRow: Decodable, FetchableRecord {
@@ -429,7 +566,9 @@ struct ReportsModuleView: View {
                     )
                 }
 
-                let allInvoices = try SalesInvoice.fetchAll(db)
+                let allInvoices = try SalesInvoice
+                    .filter(Column("status") != cancelled)
+                    .fetchAll(db)
                 struct PaidRow: Decodable, FetchableRecord {
                     var invoiceId: Int64
                     var amountPaise: Int64
@@ -469,6 +608,18 @@ struct ReportsModuleView: View {
                     customerTotals[invoice.customerId] = current
                 }
                 let allCustomers = try Customer.fetchAll(db)
+
+                // Fold customer opening balances in as old dues (deepest bucket).
+                for customer in allCustomers {
+                    guard let id = customer.id, customer.openingBalancePaise > 0 else { continue }
+                    buckets[3].count += 1
+                    buckets[3].amountPaise += customer.openingBalancePaise
+                    var current = customerTotals[id] ?? (amount: 0, age: 0)
+                    current.amount += customer.openingBalancePaise
+                    current.age = max(current.age, 120)
+                    customerTotals[id] = current
+                }
+
                 var nameById: [Int64: String] = [:]
                 for customer in allCustomers {
                     if let id = customer.id { nameById[id] = customer.name }
@@ -483,6 +634,28 @@ struct ReportsModuleView: View {
                     )
                 }
                 .sorted { $0.amountPaise > $1.amountPaise }
+
+                var trend: [MonthlyTrendRow] = []
+                let monthFormatter = DateFormatter()
+                monthFormatter.dateFormat = "MMM"
+                for i in stride(from: 5, through: 0, by: -1) {
+                    guard let monthStart = calendar.date(byAdding: .month, value: -i, to: calendar.date(from: calendar.dateComponents([.year, .month], from: .now)) ?? .now),
+                          let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart) else { continue }
+                    let label = monthFormatter.string(from: monthStart)
+                    let prod = try Int64.fetchOne(
+                        db,
+                        sql: "SELECT COALESCE(SUM(qtyKg), 0) FROM stockMovements WHERE type = ? AND date >= ? AND date < ?",
+                        arguments: [StockMovement.MoveType.production.rawValue, monthStart, monthEnd]
+                    ) ?? 0
+                    let soldMov = try Int64.fetchOne(
+                        db,
+                        sql: "SELECT COALESCE(SUM(-qtyKg), 0) FROM stockMovements WHERE type = ? AND date >= ? AND date < ?",
+                        arguments: [StockMovement.MoveType.sale.rawValue, monthStart, monthEnd]
+                    ) ?? 0
+                    trend.append(MonthlyTrendRow(label: label, producedKg: prod, soldKg: soldMov))
+                }
+                report.monthlyTrend = trend
+
                 return report
             }
         } catch {
@@ -503,11 +676,17 @@ extension ReportsModuleView {
         var cgstPaise: Int64 = 0
         var sgstPaise: Int64 = 0
         var igstPaise: Int64 = 0
+        var totalInvoices = 0
         var byProduct: [ProductReportRow] = []
         var expenseByCategory: [CategoryReportRow] = []
         var agingBuckets: [AgingBucketRow] = []
         var agingCustomers: [AgingCustomerRow] = []
+        var monthlyTrend: [MonthlyTrendRow] = []
 
         var netPaise: Int64 { salesPaise - expensesPaise }
+
+        var hasPeriodActivity: Bool {
+            producedKg > 0 || soldKg > 0 || salesPaise > 0 || expensesPaise > 0 || invoiceCount > 0
+        }
     }
 }

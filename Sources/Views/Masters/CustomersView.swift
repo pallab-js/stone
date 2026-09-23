@@ -3,6 +3,7 @@ import GRDB
 
 struct CustomerRowModel: Identifiable, Equatable {
     var customer: Customer
+    var outstandingPaise: Int64 = 0
     var id: Int64 { customer.id ?? 0 }
 }
 
@@ -45,17 +46,20 @@ struct CustomersView: View {
                 } label: {
                     Label("Add Customer", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     if let row = selectedRow { startEditing(row) }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
+                .keyboardShortcut("e", modifiers: .command)
                 .disabled(selection == nil)
                 Button(role: .destructive) {
                     confirmDelete = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [])
                 .disabled(selection == nil)
             }
         }
@@ -64,7 +68,7 @@ struct CustomersView: View {
         }
         .destructiveConfirmation(
             title: "Delete customer?",
-            message: "Existing invoices keep their customer snapshot.",
+            message: "Customers without invoices are removed. Those with records are deactivated instead — existing invoices keep their customer snapshot.",
             destructiveLabel: "Delete",
             isPresented: $confirmDelete
         ) { deleteSelected() }
@@ -112,6 +116,17 @@ struct CustomersView: View {
                 Text(Format.inr(row.customer.openingBalancePaise))
                     .font(DS.Font.tableValue)
             }
+            TableColumn("Outstanding") { row in
+                if row.outstandingPaise > 0 {
+                    Text(Format.inr(row.outstandingPaise))
+                        .font(DS.Font.tableValue)
+                        .foregroundStyle(DS.Color.danger)
+                } else {
+                    Text("—")
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .width(min: 110, ideal: 130)
             TableColumn("Status") { row in
                 Badge(
                     text: row.customer.isActive ? "Active" : "Inactive",
@@ -158,8 +173,11 @@ struct CustomersView: View {
               let row = rows.first(where: { $0.id == id }),
               let customerID = row.customer.id else { return }
         do {
-            try db.dbQueue.write { db in
-                try Customer.deleteOne(db, key: customerID)
+            let outcome = try db.dbQueue.write { db in
+                try MasterDeletion.delete(Customer.self, id: customerID, db: db)
+            }
+            if outcome == .deactivated {
+                errorMessage = "“\(row.customer.name)” has invoices or payments on record, so it was deactivated instead of deleted."
             }
             reload()
         } catch {
@@ -170,7 +188,31 @@ struct CustomersView: View {
     private func reload() {
         do {
             rows = try db.dbQueue.read { db in
-                try Customer.order(Column("name")).fetchAll(db).map(CustomerRowModel.init)
+                let customers = try Customer.order(Column("name")).fetchAll(db)
+                struct PartyTotals: Decodable, FetchableRecord {
+                    var partyId: Int64
+                    var amountPaise: Int64
+                }
+                let cancelled = SalesInvoice.Status.cancelled.rawValue
+                let invoicedRows = try PartyTotals.fetchAll(
+                    db,
+                    sql: "SELECT customerId AS partyId, SUM(grandTotalPaise) AS amountPaise FROM salesInvoices WHERE status != ? GROUP BY customerId",
+                    arguments: [cancelled]
+                )
+                let paidRows = try PartyTotals.fetchAll(
+                    db,
+                    sql: "SELECT partyId, SUM(amountPaise) AS amountPaise FROM payments WHERE partyType = ? GROUP BY partyId",
+                    arguments: [Payment.PartyType.customer.rawValue]
+                )
+                var invoiced: [Int64: Int64] = [:]
+                for row in invoicedRows { invoiced[row.partyId] = row.amountPaise }
+                var paid: [Int64: Int64] = [:]
+                for row in paidRows { paid[row.partyId] = row.amountPaise }
+                return customers.map { customer in
+                    let id = customer.id ?? 0
+                    let outstanding = max(0, (invoiced[id] ?? 0) - (paid[id] ?? 0) + customer.openingBalancePaise)
+                    return CustomerRowModel(customer: customer, outstandingPaise: outstanding)
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -300,7 +342,6 @@ struct CustomerEditorView: View {
     }
 
     private func parsedPaise(_ value: String) -> Int64 {
-        guard let amount = Double(value.trimmingCharacters(in: .whitespaces)) else { return 0 }
-        return Int64((amount * 100).rounded())
+        Format.paise(value)
     }
 }

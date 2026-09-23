@@ -109,6 +109,32 @@ enum Format {
         return "\(value)%"
     }
 
+    /// Parses user-typed numeric input into a Double.
+    ///
+    /// Commas are treated as Indian thousands-grouping separators and removed;
+    /// "." is the decimal separator. Returns nil for empty or malformed input.
+    /// e.g. "1,50,000.50" → 150000.5, "6mm" → nil.
+    static func parse(_ text: String) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = trimmed.replacingOccurrences(of: ",", with: "")
+        return Double(normalized)
+    }
+
+    /// Parses a user-typed rupee amount into paise. Empty or invalid input → 0.
+    /// Handles Indian digit grouping: "15,000" → 1,500,000 paise (₹15,000).
+    static func paise(_ text: String) -> Int64 {
+        guard let value = parse(text) else { return 0 }
+        return Int64((value * 100).rounded())
+    }
+
+    /// Parses a user-typed tonne quantity into kilograms. Empty or invalid input → 0.
+    /// "12.5" → 12,500 kg.
+    static func kg(fromTonnes text: String) -> Int64 {
+        guard let value = parse(text) else { return 0 }
+        return Int64((value * 1000).rounded())
+    }
+
     static func day(_ date: Date) -> String {
         dayFormatter.string(from: date)
     }
