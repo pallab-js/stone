@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import GRDB
 
 struct BusinessProfile: Equatable {
@@ -363,6 +364,7 @@ struct InvoicePreviewSheet: View {
                 Text("Invoice \(data.invoice.invoiceNo)")
                     .font(DS.Font.sectionTitle)
                 Spacer()
+                Button("Print…") { printInvoice() }
                 Button("Export PDF…") { exportPDF() }
                     .buttonStyle(.borderedProminent)
                 Button("Close") { dismiss() }
@@ -379,5 +381,30 @@ struct InvoicePreviewSheet: View {
     private func exportPDF() {
         guard let pdf = DocumentExport.pdfData(root: InvoiceDocumentView(data: data)) else { return }
         DocumentExport.save(pdf, suggestedName: "\(data.invoice.invoiceNo).pdf", fileType: .pdf)
+    }
+
+    @MainActor
+    private func printInvoice() {
+        let document = InvoiceDocumentView(data: data)
+        let hosting = NSHostingView(rootView: document)
+        let fitted = hosting.fittingSize
+        let width = ceil(max(595, fitted.width))
+        let height = ceil(max(842, fitted.height)) + 4
+        hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        hosting.layoutSubtreeIfNeeded()
+
+        let printInfo = NSPrintInfo.shared.copy() as! NSPrintInfo
+        printInfo.paperSize = NSSize(width: width, height: height)
+        printInfo.orientation = .portrait
+        printInfo.topMargin = 0
+        printInfo.bottomMargin = 0
+        printInfo.leftMargin = 0
+        printInfo.rightMargin = 0
+        printInfo.horizontalPagination = .fit
+        printInfo.verticalPagination = .automatic
+
+        let operation = NSPrintOperation(view: hosting, printInfo: printInfo)
+        operation.showsPrintPanel = true
+        operation.run()
     }
 }

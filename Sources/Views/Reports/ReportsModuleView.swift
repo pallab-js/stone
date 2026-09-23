@@ -16,6 +16,21 @@ struct CategoryReportRow: Identifiable, Equatable {
     var amountPaise: Int64
 }
 
+struct AgingBucketRow: Identifiable, Equatable {
+    var id: String { label }
+    var label: String
+    var count: Int
+    var amountPaise: Int64
+}
+
+struct AgingCustomerRow: Identifiable, Equatable {
+    var id: Int64 { customerId }
+    var customerId: Int64
+    var name: String
+    var amountPaise: Int64
+    var ageDays: Int
+}
+
 struct ReportsModuleView: View {
     @Environment(\.appDatabase) private var db
     @State private var startDate: Date
@@ -132,6 +147,60 @@ struct ReportsModuleView: View {
                         }
                     }
                     .frame(maxWidth: 420)
+                }
+
+                HStack(alignment: .top, spacing: DS.Spacing.m) {
+                    CardContainer {
+                        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+                            SectionHeading(title: "Receivables aging")
+                            ForEach(data.agingBuckets) { bucket in
+                                HStack {
+                                    Badge(text: bucket.label, tint: DS.Color.warning)
+                                    Spacer()
+                                    Text("\(bucket.count)")
+                                        .font(DS.Font.footnote)
+                                        .foregroundStyle(.secondary)
+                                    Text(Format.inr(bucket.amountPaise))
+                                        .font(DS.Font.tableValue)
+                                        .frame(minWidth: 110, alignment: .trailing)
+                                }
+                                .padding(.vertical, DS.Spacing.xs)
+                            }
+                            if data.agingBuckets.allSatisfy({ $0.count == 0 }) {
+                                Text("No outstanding invoices for the current data.")
+                                    .font(DS.Font.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .frame(width: 420)
+
+                    CardContainer {
+                        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+                            SectionHeading(title: "Customers with outstanding", count: data.agingCustomers.count)
+                            ForEach(data.agingCustomers.prefix(8)) { row in
+                                HStack(spacing: DS.Spacing.m) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(row.name)
+                                            .font(DS.Font.bodySemibold)
+                                        Text("\(row.ageDays) days outstanding")
+                                            .font(DS.Font.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Text(Format.inr(row.amountPaise))
+                                        .font(DS.Font.tableValue)
+                                }
+                                .padding(.vertical, DS.Spacing.xs)
+                            }
+                            if data.agingCustomers.isEmpty {
+                                Text("All invoices are settled.")
+                                    .font(DS.Font.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 460)
                 }
 
                 SectionHeading(title: "Production & sales by product", count: data.byProduct.count)
@@ -358,6 +427,61 @@ struct ReportsModuleView: View {
                         onHandKg: lookup(onHand, id)
                     )
                 }
+
+                let allInvoices = try SalesInvoice.fetchAll(db)
+                struct PaidRow: Decodable, FetchableRecord {
+                    var invoiceId: Int64
+                    var amountPaise: Int64
+                }
+                let paidRows = try PaidRow.fetchAll(
+                    db,
+                    sql: "SELECT invoiceId, SUM(amountPaise) AS amountPaise FROM payments WHERE partyType = ? AND invoiceId IS NOT NULL GROUP BY invoiceId",
+                    arguments: [Payment.PartyType.customer.rawValue]
+                )
+                var paidByInvoice: [Int64: Int64] = [:]
+                for row in paidRows {
+                    paidByInvoice[row.invoiceId] = row.amountPaise
+                }
+                let calendar = Calendar.current
+                let today = calendar.startOfDay(for: .now)
+                var buckets = [
+                    AgingBucketRow(label: "0–30 days", count: 0, amountPaise: 0),
+                    AgingBucketRow(label: "31–60 days", count: 0, amountPaise: 0),
+                    AgingBucketRow(label: "61–90 days", count: 0, amountPaise: 0),
+                    AgingBucketRow(label: "90+ days", count: 0, amountPaise: 0)
+                ]
+                var customerTotals: [Int64: (amount: Int64, age: Int)] = [:]
+                for invoice in allInvoices {
+                    let due = invoice.grandTotalPaise - (paidByInvoice[invoice.id ?? 0] ?? 0)
+                    guard due > 0 else { continue }
+                    let days = calendar.dateComponents(
+                        [.day],
+                        from: calendar.startOfDay(for: invoice.date),
+                        to: today
+                    ).day ?? 0
+                    let index = days <= 30 ? 0 : (days <= 60 ? 1 : (days <= 90 ? 2 : 3))
+                    buckets[index].count += 1
+                    buckets[index].amountPaise += due
+                    var current = customerTotals[invoice.customerId] ?? (amount: 0, age: 0)
+                    current.amount += due
+                    if days > current.age { current.age = days }
+                    customerTotals[invoice.customerId] = current
+                }
+                let allCustomers = try Customer.fetchAll(db)
+                var nameById: [Int64: String] = [:]
+                for customer in allCustomers {
+                    if let id = customer.id { nameById[id] = customer.name }
+                }
+                report.agingBuckets = buckets
+                report.agingCustomers = customerTotals.map { id, value in
+                    AgingCustomerRow(
+                        customerId: id,
+                        name: nameById[id] ?? "Customer #\(id)",
+                        amountPaise: value.amount,
+                        ageDays: value.age
+                    )
+                }
+                .sorted { $0.amountPaise > $1.amountPaise }
                 return report
             }
         } catch {
@@ -380,6 +504,8 @@ extension ReportsModuleView {
         var igstPaise: Int64 = 0
         var byProduct: [ProductReportRow] = []
         var expenseByCategory: [CategoryReportRow] = []
+        var agingBuckets: [AgingBucketRow] = []
+        var agingCustomers: [AgingCustomerRow] = []
 
         var netPaise: Int64 { salesPaise - expensesPaise }
     }
