@@ -8,14 +8,27 @@ single-file database. Single admin user, no cloud, no auth, no server.
 ![Platform](https://img.shields.io/badge/macOS-15%2B-black.svg)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
-> **Status: MVP complete.** All core modules implemented: dashboard with live
-> charts, production, GST sales & invoicing (PDF export), payments, purchases,
-> stock with adjustments, reports with CSV export, and masters. 47 unit tests
-> passing — schema/seeder invariants, formatting, PDF/CSV exports, and a
-> business-workflow suite that exercises production batches, GST invoice math
-> (CGST/SGST/IGST), invoice numbering, stock deduction & reversal, invoice
-> cancellation, payments, receivables aging, stock valuation, and the Reports
-> KPIs end-to-end.
+> **Status: MVP complete and hardening pass done.** All core modules
+> implemented: dashboard with live charts, production, GST sales & invoicing
+> (PDF export), payments, purchases, stock with adjustments, reports with CSV
+> export, and masters. **91 unit tests passing** — schema/seeder invariants,
+> formatting, invoice number sequences, backup/restore consistency, PDF/CSV
+> exports, and a business-workflow suite that exercises production batches,
+> GST invoice math (CGST/SGST/IGST), invoice numbering, stock deduction &
+> reversal, invoice cancellation, payments, receivables aging, stock
+> valuation, and the Reports KPIs end-to-end.
+>
+> Recent hardening, all test-covered:
+> - **Negative-stock guard** — a sale, adjustment or batch shrink that would
+>   drive any product below zero is rejected up front with a clear message.
+> - **Unified receivables** — one `ReceivablesCalculator` (FIFO payment
+>   allocation) drives the dashboard, Customers, Sales and aged-Reports views.
+> - **Consistent backups** — exports go through SQLite's Online Backup API, so
+>   a snapshot is consistent even mid-write; restore validates the schema.
+> - **Launch recovery** — a failed DB open shows a blocking, retryable error
+>   screen instead of silently degrading.
+> - **Off-main-actor I/O** — every database read/write is async (GRDB `@Sendable`
+>   closures), so the UI never blocks on SQLite work.
 
 ---
 
@@ -40,7 +53,9 @@ who owes what* — at a glance.
 - 🛒 **Purchases & expenses** — diesel, electricity, royalty, parts, labour, misc
 - 🏗 **Stock** — stock-in/out, adjustments, wastage, stock statement & valuation
 - 📋 **Reports** — daily production/sales, GST summary, receivables aging, mini P&L (CSV export)
-- 💾 **Local-first** — single-file SQLite DB, one-click backup
+- 💾 **Local-first** — single-file SQLite DB, one-click backup and validated restore
+- 🛡 **Guard rails** — negative-stock prevention, credit-limit warnings, cancellation with stock reversal
+- 🧮 **Single source of truth** — one `InvoiceCalculator`, one `ReceivablesCalculator`, integer-safe `StockValuation`
 - 🎨 **Uniform enterprise design system** — one consistent theme across every screen
 
 ## Roadmap
@@ -55,14 +70,16 @@ who owes what* — at a glance.
 | P5 | Stock & adjustments | ✅ Done |
 | P6 | Dashboard & analytics (live KPIs + charts) | ✅ Done |
 | P7 | Reports, mini P&L, PDF & CSV export | ✅ Done |
-| P8 | Polish, backups, tests, handover | 🧪 Verified — 47 tests green |
+| P8 | Polish, backups & restore, tests, handover | ✅ Verified — 91 tests green |
 
 ## Tech stack
 
-- **Language:** Swift 6 (strict concurrency)
+- **Language:** Swift 6 (strict concurrency, Swift 6 language mode)
 - **UI:** SwiftUI — `NavigationSplitView`, `Swift Charts`
 - **Persistence:** SQLite via [GRDB.swift](https://github.com/groue/GRDB.swift)
   with versioned migrations
+- **Concurrency:** all database access is off the main actor (async GRDB
+  `@Sendable` reads/writes) — the UI never blocks on SQLite
 - **Money:** stored as paise (`Int64`), quantities stored as kilograms (`Int64`)
 - **Formatting:** Indian digit grouping (₹1,23,456.00), tonnes with 2 decimals
 
