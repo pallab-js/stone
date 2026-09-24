@@ -10,69 +10,37 @@ struct ProductRowModel: Identifiable, Equatable {
 struct ProductsView: View {
     @Environment(\.appDatabase) private var db
     @State private var rows: [ProductRowModel] = []
-    @State private var search = ""
-    @State private var selection: ProductRowModel.ID?
-    @State private var editor: ProductEditorContext?
-    @State private var confirmDelete = false
     @State private var errorMessage: String?
 
-    private var filteredRows: [ProductRowModel] {
-        guard !search.isEmpty else { return rows }
-        return rows.filter {
-            $0.product.name.localizedCaseInsensitiveContains(search)
-                || $0.product.code.lowercased().contains(search.lowercased())
-        }
-    }
-
     var body: some View {
-        Group {
-            if filteredRows.isEmpty {
-                EmptyStateView(
-                    icon: "cube.box",
-                    title: search.isEmpty ? "No products yet" : "No matches for “\(search)”",
-                    message: "Define the aggregates you crush and sell — Stone Dust, 6mm, 10mm, 20mm, 40mm, GSB, M-Sand. Add your first product to begin."
-                )
-            } else {
-                table
-            }
-        }
-        .searchable(text: $search, prompt: "Search products")
-        .navigationTitle("Products")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    editor = ProductEditorContext(product: nil, ratePaisePerTonne: nil)
-                } label: {
-                    Label("Add Product", systemImage: "plus")
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                Button {
-                    if let row = selectedRow { startEditing(row) }
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
-                .keyboardShortcut("e", modifiers: .command)
-                .disabled(selection == nil)
-                Button(role: .destructive) {
-                    confirmDelete = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .keyboardShortcut(.delete, modifiers: [])
-                .disabled(selection == nil)
-            }
-        }
-        .sheet(item: $editor) { context in
-            ProductEditorView(context: context) {
-                reload()
-            }
-        }
-        .destructiveConfirmation(
-            title: "Delete product?",
-            message: "Unused products are removed. Products that appear in stock, production or invoice records are deactivated instead — existing records keep their snapshots.",
-            destructiveLabel: "Delete",
-            isPresented: $confirmDelete
-        ) { deleteSelected() }
+        MasterListView(
+            rows: rows,
+            navigationTitle: "Products",
+            searchPrompt: "Search products",
+            addLabel: "Add Product",
+            emptyIcon: "cube.box",
+            emptyTitle: "No products yet",
+            emptyMessage: "Define the aggregates you crush and sell — Stone Dust, 6mm, 10mm, 20mm, 40mm, GSB, M-Sand. Add your first product to begin.",
+            deleteConfirmationTitle: "Delete product?",
+            deleteConfirmationMessage: "Unused products are removed. Products that appear in stock, production or invoice records are deactivated instead — existing records keep their snapshots.",
+            filter: { row, query in
+                row.product.name.localizedCaseInsensitiveContains(query)
+                    || row.product.code.lowercased().contains(query.lowercased())
+            },
+            deactivationMessage: { row in
+                "“\(row.product.name)” is used by stock, production or invoice records, so it was deactivated instead of deleted."
+            },
+            makeNewContext: { ProductEditorContext(product: nil, ratePaisePerTonne: nil) },
+            makeEditContext: { ProductEditorContext(product: $0.product, ratePaisePerTonne: $0.ratePaisePerTonne) },
+            editorSheet: { context, onSave in
+                ProductEditorView(context: context, onSave: onSave)
+            },
+            deleteEntity: { database, id in
+                try MasterDeletion.delete(Product.self, id: id, db: database)
+            },
+            table: productTable,
+            onReload: { Task { await reload() } }
+        )
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -81,12 +49,15 @@ struct ProductsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
     }
 
-    @ViewBuilder
-    private var table: some View {
-        Table(of: ProductRowModel.self, selection: $selection) {
+    private func productTable(
+        _ selection: Binding<Int64?>,
+        _ rows: [ProductRowModel],
+        _ startEditing: @escaping (ProductRowModel) -> Void,
+        _ deleteRow: @escaping (ProductRowModel) -> Void
+    ) -> some View {
+        Table(of: ProductRowModel.self, selection: selection) {
             TableColumn("Code") { row in
                 Text(row.product.code)
                     .font(DS.Font.bodySemibold)
@@ -126,59 +97,26 @@ struct ProductsView: View {
             }
             .width(min: 80, ideal: 90)
         } rows: {
-            ForEach(filteredRows) { (row: ProductRowModel) in
+            ForEach(rows) { (row: ProductRowModel) in
                 TableRow(row)
-                    .contextMenu { rowContextMenu(row) }
+                    .contextMenu {
+                        Button("Edit") { startEditing(row) }
+                        Button("Delete", role: .destructive) { deleteRow(row) }
+                    }
             }
         }
         .alternatingRowBackgrounds()
-        .contextMenu(forSelectionType: ProductRowModel.ID?.self) { selections in
-            if let first = selections.first, let id = first, let row = rows.first(where: { $0.id == id }) {
+        .contextMenu(forSelectionType: Int64.self) { selections in
+            if let id = selections.first, let row = rows.first(where: { $0.id == id }) {
                 Button("Edit") { startEditing(row) }
-            }
-            Button("Delete", role: .destructive) { confirmDelete = true }
-        }
-    }
-
-    private var selectedRow: ProductRowModel? {
-        guard let selection else { return nil }
-        return rows.first { $0.id == selection }
-    }
-
-    private func startEditing(_ row: ProductRowModel) {
-        editor = ProductEditorContext(product: row.product, ratePaisePerTonne: row.ratePaisePerTonne)
-    }
-
-    private func rowContextMenu(_ row: ProductRowModel) -> some View {
-        Group {
-            Button("Edit") { startEditing(row) }
-            Button("Delete", role: .destructive) {
-                selection = row.id
-                confirmDelete = true
+                Button("Delete", role: .destructive) { deleteRow(row) }
             }
         }
     }
 
-    private func deleteSelected() {
-        guard let id = selection,
-              let row = rows.first(where: { $0.id == id }),
-              let productID = row.product.id else { return }
+    private func reload() async {
         do {
-            let outcome = try db.dbQueue.write { db in
-                try MasterDeletion.delete(Product.self, id: productID, db: db)
-            }
-            if outcome == .deactivated {
-                errorMessage = "“\(row.product.name)” is used by stock, production or invoice records, so it was deactivated instead of deleted."
-            }
-            reload()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reload() {
-        do {
-            rows = try db.dbQueue.read { db in
+            rows = try await db.readAsync { db in
                 let products = try Product.order(Column("sortOrder"), Column("name")).fetchAll(db)
                 let rates = try ProductRate.order(Column("id")).fetchAll(db)
                 var latest: [Int64: Int64] = [:]
@@ -291,36 +229,47 @@ struct ProductEditorView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { save() }
+                Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 460)
+        .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
     }
 
-    private func save() {
+    private func save() async {
+        let formCode = code.trimmingCharacters(in: .whitespaces).uppercased()
+        let formName = name.trimmingCharacters(in: .whitespaces)
+        let formCategory = category
+        let formUnit = unit
+        let formHsn = hsn.trimmingCharacters(in: .whitespaces)
+        let formGstRateBps = gstRateBps
+        let formSortOrder = sortOrder
+        let formIsActive = isActive
+        let formCftFactor = Format.parse(cftFactor)
+        let formRatePaise = ratePaise
+        let existingProduct = context.product
         do {
-            try db.dbQueue.write { db in
-                var product = context.product ?? Product(code: "", name: "")
-                product.code = code.trimmingCharacters(in: .whitespaces).uppercased()
-                product.name = name.trimmingCharacters(in: .whitespaces)
-                product.category = category
-                product.unit = unit
-                product.hsn = hsn.trimmingCharacters(in: .whitespaces)
-                product.gstRateBps = gstRateBps
-                product.sortOrder = sortOrder
-                product.isActive = isActive
-                product.cftFactor = Format.parse(cftFactor)
+            try await db.writeAsync { db in
+                var product = existingProduct ?? Product(code: "", name: "")
+                product.code = formCode
+                product.name = formName
+                product.category = formCategory
+                product.unit = formUnit
+                product.hsn = formHsn
+                product.gstRateBps = formGstRateBps
+                product.sortOrder = formSortOrder
+                product.isActive = formIsActive
+                product.cftFactor = formCftFactor
                 if product.id == nil {
                     product.createdAt = .now
                 }
                 product.updatedAt = .now
                 try product.save(db)
 
-                if let productID = product.id, let rate = ratePaise {
+                if let productID = product.id, let rate = formRatePaise {
                     let day = Calendar.current.startOfDay(for: .now)
                     if let existing = try ProductRate
                         .filter(Column("productId") == productID && Column("effectiveDate") == day)

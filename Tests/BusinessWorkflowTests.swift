@@ -74,15 +74,20 @@ final class BusinessWorkflowTests: XCTestCase {
         intraState: Bool,
         lines: [DraftLine]
     ) throws -> (invoice: SalesInvoice, subtotal: Int64, cgst: Int64, sgst: Int64, igst: Int64) {
-        let amounts = lines.map { $0.qtyKg * $0.ratePaisePerTonne / 1000 }
-        let gst = amounts.enumerated().map { index, amount in
-            amount * Int64(lines[index].gstRateBps) / 10_000
-        }
-        let subtotal = amounts.reduce(0, +)
-        let cgst = gst.reduce(Int64(0)) { partial, g in intraState ? partial + g / 2 : partial }
-        let sgst = gst.reduce(Int64(0)) { partial, g in intraState ? partial + g - g / 2 : partial }
-        let igst = gst.reduce(Int64(0)) { partial, g in intraState ? partial : partial + g }
-        let grand = max(0, subtotal + cgst + sgst + igst + transportPaise - discountPaise)
+        let amounts = lines.map { InvoiceCalculator.amountPaise(qtyKg: $0.qtyKg, ratePaisePerTonne: $0.ratePaisePerTonne) }
+        let totals = InvoiceCalculator.totals(
+            lines: lines.map {
+                InvoiceCalculator.Line(qtyKg: $0.qtyKg, ratePaisePerTonne: $0.ratePaisePerTonne, gstRateBps: $0.gstRateBps)
+            },
+            transportPaise: transportPaise,
+            discountPaise: discountPaise,
+            isIntraState: intraState
+        )
+        let subtotal = totals.subtotalPaise
+        let cgst = totals.cgstPaise
+        let sgst = totals.sgstPaise
+        let igst = totals.igstPaise
+        let grand = totals.grandTotalPaise
         let netKg = lines.reduce(0) { $0 + $1.qtyKg }
 
         var invoice = SalesInvoice(
@@ -220,6 +225,20 @@ final class BusinessWorkflowTests: XCTestCase {
                 .filter(Column("invoiceNo") == created[1])
                 .deleteAll(db)
             XCTAssertEqual(try InvoiceNumber.next(db: db), String(format: "INV-%d-0004", currentYear()))
+        }
+    }
+
+    func testInvoiceNumberingHonorsConfiguredPrefix() throws {
+        try appDatabase.dbQueue.write { db in
+            try AppSetting.set(key: "invoice_prefix", value: "PI", db: db)
+            // One configured prefix drives both the number generator and the
+            // sequence, so a "PI-" setting produces PI- numbers (matching any
+            // historical seeded data) instead of mixing with "INV-".
+            XCTAssertEqual(try InvoiceNumber.next(db: db), String(format: "PI-%d-0001", currentYear()))
+            let first = try InvoiceNumber.next(db: db)
+            let customer = try makeCustomer(db: db, name: "A")
+            try saveInvoice(db: db, invoiceNo: first, date: .now, customerID: customer.id!, intraState: true, lines: [])
+            XCTAssertEqual(try InvoiceNumber.next(db: db), String(format: "PI-%d-0002", currentYear()))
         }
     }
 
@@ -828,6 +847,310 @@ final class BusinessWorkflowTests: XCTestCase {
         XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
             try StockGate.requireAvailable(db: db, replacingInvoiceID: invoice.id!, required: [product.id!: 11_000], productName: { _ in "10mm" })
         })
+    }
+
+    // MARK: - Stock gate (negative-stock prevention on removals)
+
+    func testStockAdjustmentCannotExceedOnHand() throws {
+        let productID: Int64 = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm").id!
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(productID, 10_000)])
+        }
+        // Wastage of the entire on-hand amount is allowed.
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: 10_000, productID: productID, productName: { _ in "10mm" })
+        })
+        // Wastage of one kg more than on hand is rejected.
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: 10_001, productID: productID, productName: { _ in "10mm" })
+        }) { error in
+            XCTAssertEqual(error as? InvoiceValidationError,
+                           .insufficientStock(product: "10mm", availableKg: 10_000, neededKg: 10_001))
+        }
+        // Non-positive removals never block.
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: 0, productID: productID, productName: { _ in "10mm" })
+        })
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: -5, productID: productID, productName: { _ in "10mm" })
+        })
+    }
+
+    func testDeletingProductionBatchBlockedWhenOutputAlreadySold() throws {
+        let product = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm")
+        }
+        let customer = try appDatabase.dbQueue.write { db in
+            try makeCustomer(db: db, name: "Batch Customer")
+        }
+        // 10 t produced, sold in full.
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(product.id!, 10_000)])
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveInvoice(db: db, invoiceNo: "INV-2026-0300", date: .now, customerID: customer.id!, intraState: true,
+                            lines: [DraftLine(productID: product.id!, qtyKg: 10_000, ratePaisePerTonne: 100_000, gstRateBps: 500)])
+        }
+        // Mirrors ProductionModuleView.deleteSelected(): the gate must reject
+        // removing the batch's credits now that its output was consumed.
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: 10_000, productID: product.id!, productName: { _ in "10mm" })
+        }) { error in
+            XCTAssertEqual(error as? InvoiceValidationError,
+                           .insufficientStock(product: "10mm", availableKg: 0, neededKg: 10_000))
+        }
+    }
+
+    func testDeletingProductionBatchAllowedWhenOutputStillOnHand() throws {
+        let product = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm")
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(product.id!, 10_000)])
+        }
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: 10_000, productID: product.id!, productName: { _ in "10mm" })
+        })
+    }
+
+    func testShrinkingProductionBatchBlockedBelowConsumedOutput() throws {
+        let product = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm")
+        }
+        let customer = try appDatabase.dbQueue.write { db in
+            try makeCustomer(db: db, name: "Shrink Customer")
+        }
+        // 10 t produced, 8 t sold → 2 t on hand.
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(product.id!, 10_000)])
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveInvoice(db: db, invoiceNo: "INV-2026-0301", date: .now, customerID: customer.id!, intraState: true,
+                            lines: [DraftLine(productID: product.id!, qtyKg: 8_000, ratePaisePerTonne: 100_000, gstRateBps: 500)])
+        }
+        let onHand = try appDatabase.dbQueue.read { try balanceKg(db: $0, productID: product.id!) }
+        XCTAssertEqual(onHand, 2_000)
+        // Mirrors ProductionEditorView.saveBatch(): shrinking the batch from
+        // 10 t to 3 t removes 7 t of credits → 2 t on hand can't absorb it.
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: 10_000 - 3_000, productID: product.id!, productName: { _ in "10mm" })
+        })
+        // Shrinking to 8 t removes 2 t → exactly the remaining balance, ok.
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: 10_000 - 8_000, productID: product.id!, productName: { _ in "10mm" })
+        })
+    }
+
+    func testDeletingManualOpeningBlockedWhenAlreadyConsumed() throws {
+        let product = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm")
+        }
+        let customer = try appDatabase.dbQueue.write { db in
+            try makeCustomer(db: db, name: "Opening Customer")
+        }
+        // Manual opening of 10 t, then 10 t sold → 0 on hand.
+        try appDatabase.dbQueue.write { db in
+            var move = StockMovement(productId: product.id!, date: .now, type: .opening, qtyKg: 10_000, remarks: "opening")
+            try move.insert(db)
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveInvoice(db: db, invoiceNo: "INV-2026-0302", date: .now, customerID: customer.id!, intraState: true,
+                            lines: [DraftLine(productID: product.id!, qtyKg: 10_000, ratePaisePerTonne: 100_000, gstRateBps: 500)])
+        }
+        // Mirrors StockModuleView.deleteSelected(): deleting the opening credit
+        // would drive stock to −10 t, so it must be rejected.
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, removingKg: 10_000, productID: product.id!, productName: { _ in "10mm" })
+        })
+    }
+
+    // MARK: - Receivables calculator (single definition of outstanding)
+
+    private func makeSingleInvoice(db: Database, no: String, daysAgo: Int, customerID: Int64) throws -> (invoice: SalesInvoice, grand: Int64) {
+        let product = try Product.filter(Column("code") == "TEN").fetchOne(db) ?? {
+            var product = Product(code: "TEN", name: "10mm")
+            try product.insert(db)
+            return product
+        }()
+        let result = try saveInvoice(
+            db: db, invoiceNo: no, date: calendarDate(daysAgo: daysAgo), customerID: customerID,
+            intraState: true,
+            lines: [DraftLine(productID: product.id!, qtyKg: 4_000, ratePaisePerTonne: 100_000, gstRateBps: 500)]
+        )
+        return (result.invoice, result.invoice.grandTotalPaise)
+    }
+
+    private func receivables(_ db: Database) throws -> ReceivablesCalculator.Summary {
+        try ReceivablesCalculator.snapshot(db: db)
+    }
+
+    // MARK: - Stock valuation
+
+    func testStockValuationIsExactIntegerArithmetic() throws {
+        // 4,000 kg at ₹1,000/t ⇒ ₹4,000.00 (4_000_000 paise), no Double involved.
+        XCTAssertEqual(StockValuation.value(ratePaisePerTonne: 100_000, qtyKg: 4_000), 400_000)
+        // Fractional paisa rounds to nearest, matching the old Double handling.
+        XCTAssertEqual(StockValuation.value(ratePaisePerTonne: 100_000, qtyKg: 1), 100)
+        XCTAssertEqual(StockValuation.value(ratePaisePerTonne: 100_000, qtyKg: 1_005), 100_500)
+        XCTAssertEqual(StockValuation.value(ratePaisePerTonne: 1, qtyKg: 1), 0)
+        XCTAssertEqual(StockValuation.value(ratePaisePerTonne: 1, qtyKg: 499), 0)
+        XCTAssertEqual(StockValuation.value(ratePaisePerTonne: 1, qtyKg: 500), 1)
+        // Zero stock, no rate to multiply.
+        XCTAssertEqual(StockValuation.value(ratePaisePerTonne: 0, qtyKg: 0), 0)
+    }
+
+    func testStockValuationMatchesPriorRoundedDoubleFormula() throws {
+        // Regression: dashboard and stock screen now share this exact integer
+        // formula. It must give identical answers to the old Double-rounded
+        // calculation for all realistic stock/rate sizes, including edge cases.
+        let cases: [(rate: Int64, qty: Int64)] = [
+            (100_000, 4_000),
+            (100_000, 1),
+            (100_000, 1_005),
+            (1, 1),
+            (1, 499),
+            (1, 500),
+            (52_000, 3_456_789),
+            (95_000, 123_456),
+            (64_000, 87_654_321),
+            (1_000_000_000, 2_000),
+            (0, 0),
+        ]
+        for testCase in cases {
+            let integer = StockValuation.value(ratePaisePerTonne: testCase.rate, qtyKg: testCase.qty)
+            let legacy = Int64((Double(testCase.qty) * Double(testCase.rate) / 1000.0).rounded())
+            XCTAssertEqual(integer, legacy, "rate \(testCase.rate) qty \(testCase.qty)")
+        }
+    }
+
+    func testUnlinkedPaymentSettlesOldestInvoiceFirst() throws {
+        let customer = try appDatabase.dbQueue.write { db in
+            try makeCustomer(db: db, name: "FIFO Customer")
+        }
+        let older = try appDatabase.dbQueue.write { db in
+            try makeSingleInvoice(db: db, no: "INV-2026-0401", daysAgo: 30, customerID: customer.id!).invoice
+        }.id!
+        let newer = try appDatabase.dbQueue.write { db in
+            try makeSingleInvoice(db: db, no: "INV-2026-0402", daysAgo: 5, customerID: customer.id!).invoice
+        }.id!
+        // A 5,00,000 advance with no invoice link: settles the older invoice
+        // (4,20,000) first, then 80,000 of the newer one.
+        try appDatabase.dbQueue.write { db in
+            var payment = Payment(date: .now, partyType: .customer, partyId: customer.id!, kind: .advance, amountPaise: 500_000)
+            try payment.insert(db)
+        }
+        let due = try appDatabase.dbQueue.read { db in
+            try receivables(db).byCustomer.first { $0.customerId == customer.id! }!
+        }
+        XCTAssertEqual(due.invoices.count, 2)
+        let byID = Dictionary(uniqueKeysWithValues: due.invoices.map { ($0.invoiceId, $0) })
+        XCTAssertEqual(byID[older]?.duePaise, 0)
+        XCTAssertEqual(byID[older]?.paidPaise, 420_000)
+        XCTAssertEqual(byID[newer]?.duePaise, 340_000)
+        XCTAssertEqual(due.outstandingPaise, 340_000)
+    }
+
+    func testUnlinkedPaymentSettlesOpeningBalanceBeforeInvoices() throws {
+        let customer = try appDatabase.dbQueue.write { db in
+            var customer = try makeCustomer(db: db, name: "Opening FIFO Customer")
+            customer.openingBalancePaise = 200_000
+            try customer.update(db)
+            return customer
+        }
+        let (_, grand) = try appDatabase.dbQueue.write { db in
+            try makeSingleInvoice(db: db, no: "INV-2026-0403", daysAgo: 10, customerID: customer.id!)
+        }
+        try appDatabase.dbQueue.write { db in
+            var payment = Payment(date: .now, partyType: .customer, partyId: customer.id!, kind: .other, amountPaise: 300_000)
+            try payment.insert(db)
+        }
+        let due = try appDatabase.dbQueue.read { db in
+            try receivables(db).byCustomer.first { $0.customerId == customer.id! }!
+        }
+        // 300,000 settles the 200,000 opening first; 100,000 goes to the invoice.
+        XCTAssertEqual(due.openingDuePaise, 0)
+        XCTAssertEqual(due.invoices.first?.duePaise, grand - 100_000)
+        XCTAssertEqual(due.outstandingPaise, grand - 100_000)
+    }
+
+    func testLinkedPaymentOnlyReducesItsOwnInvoice() throws {
+        let customer = try appDatabase.dbQueue.write { db in
+            try makeCustomer(db: db, name: "Linked Customer")
+        }
+        try appDatabase.dbQueue.write { db in
+            try makeSingleInvoice(db: db, no: "INV-2026-0404", daysAgo: 30, customerID: customer.id!)
+        }
+        let newer = try appDatabase.dbQueue.write { db in
+            try makeSingleInvoice(db: db, no: "INV-2026-0405", daysAgo: 5, customerID: customer.id!).invoice
+        }.id!
+        // A payment explicitly linked to the NEWER invoice must not touch the
+        // older one, even though FIFO would have.
+        try appDatabase.dbQueue.write { db in
+            var payment = Payment(date: .now, partyType: .customer, partyId: customer.id!, invoiceId: newer, amountPaise: 200_000)
+            try payment.insert(db)
+        }
+        let due = try appDatabase.dbQueue.read { db in
+            try receivables(db).byCustomer.first { $0.customerId == customer.id! }!
+        }
+        let byID = Dictionary(uniqueKeysWithValues: due.invoices.map { ($0.invoiceId, $0) })
+        XCTAssertEqual(byID[newer]?.duePaise, 220_000)
+        XCTAssertEqual(due.invoices.first(where: { $0.invoiceId != newer })?.duePaise, 420_000)
+        XCTAssertEqual(due.outstandingPaise, 640_000)
+    }
+
+    func testNegativeOpeningBalanceActsAsCarriedCredit() throws {
+        let customer = try appDatabase.dbQueue.write { db in
+            var customer = try makeCustomer(db: db, name: "Credit Customer")
+            customer.openingBalancePaise = -100_000
+            try customer.update(db)
+            return customer
+        }
+        let (_, grand) = try appDatabase.dbQueue.write { db in
+            try makeSingleInvoice(db: db, no: "INV-2026-0406", daysAgo: 8, customerID: customer.id!)
+        }
+        let due = try appDatabase.dbQueue.read { db in
+            try receivables(db).byCustomer.first { $0.customerId == customer.id! }!
+        }
+        // Carried-forward credit settles the invoice first, exactly like an
+        // unlinked payment of ₹1,00,000 would have.
+        XCTAssertEqual(due.openingDuePaise, 0)
+        XCTAssertEqual(due.invoices.first?.duePaise, grand - 100_000)
+        XCTAssertEqual(due.outstandingPaise, grand - 100_000)
+    }
+
+    func testOutstandingIsOneNumberEverywhere() throws {
+        let customer = try appDatabase.dbQueue.write { db in
+            var customer = try makeCustomer(db: db, name: "Everything Customer")
+            customer.openingBalancePaise = 150_000
+            try customer.update(db)
+            return customer
+        }
+        let (invoiceA, grandA) = try appDatabase.dbQueue.write { db in
+            try makeSingleInvoice(db: db, no: "INV-2026-0407", daysAgo: 45, customerID: customer.id!)
+        }
+        let (_, grandB) = try appDatabase.dbQueue.write { db in
+            try makeSingleInvoice(db: db, no: "INV-2026-0408", daysAgo: 12, customerID: customer.id!)
+        }
+        // Explicitly settle part of A, plus an unlinked advance on account.
+        try appDatabase.dbQueue.write { db in
+            var linked = Payment(date: .now, partyType: .customer, partyId: customer.id!, invoiceId: invoiceA.id!, amountPaise: 100_000)
+            try linked.insert(db)
+            var advance = Payment(date: .now, partyType: .customer, partyId: customer.id!, kind: .advance, amountPaise: 400_000)
+            try advance.insert(db)
+        }
+        let first = try appDatabase.dbQueue.read { db in
+            (try receivables(db).byCustomer.first { $0.customerId == customer.id! }!)
+        }
+        let collected: Int64 = 100_000 + 400_000
+        let expected = max(0, 150_000 + grandA + grandB - collected)
+        XCTAssertEqual(first.outstandingPaise, expected)
+        // The same outstanding falls straight out of the allocation.
+        XCTAssertEqual(
+            first.outstandingPaise,
+            first.openingDuePaise + first.invoices.reduce(0) { $0 + $1.duePaise }
+        )
     }
 }
 

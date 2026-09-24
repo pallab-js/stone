@@ -5,6 +5,7 @@ import GRDB
 struct OverviewView: View {
     @Environment(\.appDatabase) private var db
     @State private var snapshot: Snapshot = Snapshot.empty
+    @State private var loaded = false
 
     var body: some View {
         ScrollView {
@@ -86,9 +87,15 @@ struct OverviewView: View {
                     CardContainer {
                         VStack(alignment: .leading, spacing: DS.Spacing.m) {
                             SectionHeading(title: "Recent dispatches", count: snapshot.recentInvoices.count)
-                            ForEach(snapshot.recentInvoices) { row in
-                                dispatchRow(row)
-                                if row != snapshot.recentInvoices.last { Divider() }
+                            if snapshot.recentInvoices.isEmpty {
+                                Text("Dispatches appear here once invoices are created.")
+                                    .font(DS.Font.footnote)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(snapshot.recentInvoices) { row in
+                                    dispatchRow(row)
+                                    if row != snapshot.recentInvoices.last { Divider() }
+                                }
                             }
                         }
                     }
@@ -100,7 +107,7 @@ struct OverviewView: View {
                             statRow("Products", snapshot.productCount, icon: "cube.box.fill", tint: DS.Color.info)
                             statRow("Customers", snapshot.customerCount, icon: "person.2.fill", tint: DS.Color.success)
                             statRow("Suppliers", snapshot.supplierCount, icon: "truck.box.fill", tint: DS.Color.accent)
-                            statRow("Vehicles", snapshot.vehicleCount, icon: "truck.fill", tint: DS.Color.warning)
+                            statRow("Vehicles", snapshot.vehicleCount, icon: "truck.pickup.side.fill", tint: DS.Color.warning)
                             Divider()
                             Text(snapshot.hint)
                                 .font(DS.Font.footnote)
@@ -115,8 +122,10 @@ struct OverviewView: View {
             .frame(maxWidth: .infinity)
         }
         .background(DS.Color.contentBackground)
-        .refreshable { reload() }
-        .task { reload() }
+        .navigationTitle("Dashboard")
+        .refreshable { await reload() }
+        .task { await reload(); loaded = true }
+        .loadingOverlay(!loaded)
     }
 
     private func dispatchRow(_ row: RecentInvoice) -> some View {
@@ -179,9 +188,9 @@ struct OverviewView: View {
         .padding(.vertical, 2)
     }
 
-    private func reload() {
+    private func reload() async {
         do {
-            let newSnapshot = try db.dbQueue.read(Snapshot.load)
+            let newSnapshot = try await db.readAsync(Snapshot.load)
             snapshot = newSnapshot
         } catch {
             snapshot = .empty
@@ -269,27 +278,9 @@ extension OverviewView {
                 arguments: [cancelled, startOfDay, nextDay]
             ) ?? 0
 
-            let invoiced = try Int64.fetchOne(
-                db,
-                sql: "SELECT COALESCE(SUM(grandTotalPaise), 0) FROM salesInvoices WHERE status != ?",
-                arguments: [cancelled]
-            ) ?? 0
-            let collected = try Int64.fetchOne(
-                db,
-                sql: "SELECT COALESCE(SUM(amountPaise), 0) FROM payments WHERE partyType = ?",
-                arguments: [Payment.PartyType.customer.rawValue]
-            ) ?? 0
-            let openingBalances = try Int64.fetchOne(
-                db,
-                sql: "SELECT COALESCE(SUM(openingBalancePaise), 0) FROM customers"
-            ) ?? 0
-            snapshot.outstandingPaise = max(0, invoiced - collected + openingBalances)
-
-            snapshot.openInvoices = try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM salesInvoices WHERE status != ?",
-                arguments: [cancelled]
-            ) ?? 0
+            let receivables = try ReceivablesCalculator.snapshot(db: db)
+            snapshot.outstandingPaise = receivables.totalOutstandingPaise
+            snapshot.openInvoices = receivables.invoiceCount
 
             struct BalanceRow: Decodable, FetchableRecord {
                 var productId: Int64
@@ -357,8 +348,7 @@ extension OverviewView {
             snapshot.totalStockKg = balances.reduce(0) { $0 + $1.qtyKg }
             snapshot.stockValuePaise = balances.reduce(0) { partial, row in
                 let rate = latestRates[row.productId] ?? 0
-                let value = Double(row.qtyKg) * Double(rate) / 1000.0
-                return partial + Int64(value.rounded())
+                return partial + StockValuation.value(ratePaisePerTonne: rate, qtyKg: row.qtyKg)
             }
 
             let recent = try SalesInvoice

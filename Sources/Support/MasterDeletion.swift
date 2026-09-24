@@ -26,7 +26,7 @@ enum MasterDeletion {
         do {
             _ = try T.deleteOne(db, key: id)
             return .deleted
-        } catch is DatabaseError {
+        } catch let error as DatabaseError where error.resultCode == .SQLITE_CONSTRAINT {
             if var record = try T.fetchOne(db, key: id) {
                 record.isActive = false
                 try record.update(db)

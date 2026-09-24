@@ -16,6 +16,7 @@ struct PurchasesModuleView: View {
     @State private var errorMessage: String?
     @State private var monthExpensePaise: Int64 = 0
     @State private var searchText = ""
+    @State private var loaded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xl) {
@@ -24,7 +25,10 @@ struct PurchasesModuleView: View {
                 subtitle: "Diesel, electricity, quarry royalty, spare parts, labour, rent."
             )
 
-            HStack(spacing: DS.Spacing.m) {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 215), spacing: DS.Spacing.m, alignment: .top)],
+                spacing: DS.Spacing.m
+            ) {
                 KPIValueCard(
                     title: "This month's spend",
                     value: Format.inr(monthExpensePaise),
@@ -52,9 +56,11 @@ struct PurchasesModuleView: View {
             }
         }
         .padding(DS.Spacing.xl)
+        .frame(maxWidth: 1280)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Purchases & Expenses")
+        .loadingOverlay(!loaded)
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search category, supplier or detail")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -81,14 +87,14 @@ struct PurchasesModuleView: View {
             }
         }
         .sheet(item: $editor) { context in
-            PurchaseEditorView(context: context) { reload() }
+            PurchaseEditorView(context: context) { Task { await reload() } }
         }
         .destructiveConfirmation(
             title: "Delete this expense?",
             message: "It will be removed from the expense records and totals.",
             destructiveLabel: "Delete",
             isPresented: $confirmDelete
-        ) { deleteSelected() }
+        ) { Task { await deleteSelected() } }
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -97,7 +103,7 @@ struct PurchasesModuleView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
+        .task { await reload(); loaded = true }
     }
 
     @ViewBuilder
@@ -185,22 +191,22 @@ struct PurchasesModuleView: View {
         }
     }
 
-    private func deleteSelected() {
+    private func deleteSelected() async {
         guard let id = selection,
               let purchaseID = rows.first(where: { $0.id == id })?.purchase.id else { return }
         do {
-            try db.dbQueue.write { db in
+            try await db.writeAsync { db in
                 try Purchase.deleteOne(db, key: purchaseID)
             }
-            reload()
+            await reload()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func reload() {
+    private func reload() async {
         do {
-            let result = try db.dbQueue.read { db -> ([PurchaseRow], Int64) in
+            let result = try await db.readAsync { db -> ([PurchaseRow], Int64) in
                 let purchases = try Purchase.order(Column("date").desc, Column("id").desc).fetchAll(db)
                 let suppliers = try Supplier.fetchAll(db)
                 var supplierName = [Int64: String]()
@@ -306,9 +312,19 @@ struct PurchaseEditorView: View {
                         TextField("Rate per litre (₹)", text: $rateText)
                         let litres = Format.parse(qtyLitresText) ?? 0
                         let rate = Format.parse(rateText) ?? 0
-                        Text("Auto amount: \(Format.rupees(litres * rate))")
-                            .font(DS.Font.footnote)
-                            .foregroundStyle(.secondary)
+                        if litres > 0, rate > 0 {
+                            Button {
+                                amountText = String(format: "%.2f", litres * rate)
+                            } label: {
+                                Label("Apply amount \(Format.rupees(litres * rate))", systemImage: "arrow.down.circle.fill")
+                                    .font(DS.Font.footnote)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Text("Auto amount: \(Format.rupees(litres * rate))")
+                                .font(DS.Font.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -334,20 +350,20 @@ struct PurchaseEditorView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { save() }
+                Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 520)
+        .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
-        .task { loadSuppliers() }
+        .task { await loadSuppliers() }
     }
 
-    private func loadSuppliers() {
+    private func loadSuppliers() async {
         do {
-            suppliers = try db.dbQueue.read { db in
+            suppliers = try await db.readAsync { db in
                 try Supplier.filter(Column("isActive") == true).order(Column("name")).fetchAll(db)
             }
         } catch {
@@ -355,20 +371,29 @@ struct PurchaseEditorView: View {
         }
     }
 
-    private func save() {
+    private func save() async {
         let litres = Format.parse(qtyLitresText)
         let rate = Format.parse(rateText)
+        let formDate = date
+        let formCategory = category
+        let formSupplierId = supplierId
+        let formAmount = amountPaise
+        let formMode = mode
+        let formQtyLitres = litres
+        let formRate = rate.map { Int64(($0 * 100).rounded()) }
+        let formNotes = trimmedNil(notes)
+        let existingPurchase = context.purchase
         do {
-            try db.dbQueue.write { db in
-                var purchase = context.purchase ?? Purchase(date: date, category: category, amountPaise: amountPaise)
-                purchase.date = date
-                purchase.category = category
-                purchase.supplierId = supplierId
-                purchase.amountPaise = amountPaise
-                purchase.mode = mode
-                purchase.qtyLitres = litres
-                purchase.ratePaise = rate.map { Int64(($0 * 100).rounded()) }
-                purchase.notes = trimmedNil(notes)
+            try await db.writeAsync { db in
+                var purchase = existingPurchase ?? Purchase(date: formDate, category: formCategory, amountPaise: formAmount)
+                purchase.date = formDate
+                purchase.category = formCategory
+                purchase.supplierId = formSupplierId
+                purchase.amountPaise = formAmount
+                purchase.mode = formMode
+                purchase.qtyLitres = formQtyLitres
+                purchase.ratePaise = formRate
+                purchase.notes = formNotes
                 try purchase.save(db)
             }
             onSave()

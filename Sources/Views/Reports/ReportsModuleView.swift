@@ -57,6 +57,7 @@ struct ReportsModuleView: View {
     @State private var data: ReportData = ReportData()
     @State private var errorMessage: String?
     @State private var applyingPeriod = false
+    @State private var loaded = false
 
     init() {
         let calendar = Calendar.current
@@ -77,7 +78,7 @@ struct ReportsModuleView: View {
                     HStack(spacing: DS.Spacing.m) {
                         DatePicker("From", selection: $startDate, displayedComponents: .date)
                         DatePicker("To", selection: $endDate, displayedComponents: .date)
-                        Button("Refresh") { reload() }
+                        Button("Refresh") { Task { await reload() } }
                             .buttonStyle(.borderedProminent)
                     }
                     Picker("Period", selection: $period) {
@@ -95,12 +96,12 @@ struct ReportsModuleView: View {
                 .onChange(of: startDate) { _, _ in
                     guard !applyingPeriod else { return }
                     period = nil
-                    reload()
+                    Task { await reload() }
                 }
                 .onChange(of: endDate) { _, _ in
                     guard !applyingPeriod else { return }
                     period = nil
-                    reload()
+                    Task { await reload() }
                 }
 
                 LazyVGrid(
@@ -316,6 +317,7 @@ struct ReportsModuleView: View {
         }
         .background(DS.Color.contentBackground)
         .navigationTitle("Reports")
+        .loadingOverlay(!loaded)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -334,7 +336,7 @@ struct ReportsModuleView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
+        .task { await reload(); loaded = true }
     }
 
     @ViewBuilder
@@ -429,7 +431,9 @@ struct ReportsModuleView: View {
 
         let content = CSVWriter.string(headers: [], rows: rows)
         let name = "paasherp-report-\(dateFormatter.string(from: from)).csv"
-        DocumentExport.saveCSV(content, suggestedName: name)
+        DocumentExport.saveCSV(content, suggestedName: name) { error in
+            errorMessage = "Could not save the CSV: \(error.localizedDescription)"
+        }
     }
 
     private func applyPeriod(_ preset: ReportPeriod?) {
@@ -454,16 +458,21 @@ struct ReportsModuleView: View {
         applyingPeriod = true
         startDate = start
         endDate = now
-        DispatchQueue.main.async { applyingPeriod = false }
-        reload()
+        // Rebuild the report off the main actor, clearing the busy overlay
+        // only once it has completed (previously the overlay flickered off
+        // immediately via a DispatchQueue.main.async).
+        Task {
+            await reload()
+            applyingPeriod = false
+        }
     }
 
-    private func reload() {
+    private func reload() async {
         let from = Calendar.current.startOfDay(for: startDate)
         let to = Calendar.current.startOfDay(for: endDate)
         let next = Calendar.current.date(byAdding: .day, value: 1, to: to) ?? to
         do {
-            data = try db.dbQueue.read { db in
+            data = try await db.readAsync { db in
                 var report = ReportData()
                 let cancelled = SalesInvoice.Status.cancelled.rawValue
 
@@ -566,22 +575,7 @@ struct ReportsModuleView: View {
                     )
                 }
 
-                let allInvoices = try SalesInvoice
-                    .filter(Column("status") != cancelled)
-                    .fetchAll(db)
-                struct PaidRow: Decodable, FetchableRecord {
-                    var invoiceId: Int64
-                    var amountPaise: Int64
-                }
-                let paidRows = try PaidRow.fetchAll(
-                    db,
-                    sql: "SELECT invoiceId, SUM(amountPaise) AS amountPaise FROM payments WHERE partyType = ? AND invoiceId IS NOT NULL GROUP BY invoiceId",
-                    arguments: [Payment.PartyType.customer.rawValue]
-                )
-                var paidByInvoice: [Int64: Int64] = [:]
-                for row in paidRows {
-                    paidByInvoice[row.invoiceId] = row.amountPaise
-                }
+                let receivables = try ReceivablesCalculator.snapshot(db: db)
                 let calendar = Calendar.current
                 let today = calendar.startOfDay(for: .now)
                 var buckets = [
@@ -591,34 +585,37 @@ struct ReportsModuleView: View {
                     AgingBucketRow(label: "90+ days", count: 0, amountPaise: 0)
                 ]
                 var customerTotals: [Int64: (amount: Int64, age: Int)] = [:]
-                for invoice in allInvoices {
-                    let due = invoice.grandTotalPaise - (paidByInvoice[invoice.id ?? 0] ?? 0)
-                    guard due > 0 else { continue }
-                    let days = calendar.dateComponents(
-                        [.day],
-                        from: calendar.startOfDay(for: invoice.date),
-                        to: today
-                    ).day ?? 0
-                    let index = days <= 30 ? 0 : (days <= 60 ? 1 : (days <= 90 ? 2 : 3))
-                    buckets[index].count += 1
-                    buckets[index].amountPaise += due
-                    var current = customerTotals[invoice.customerId] ?? (amount: 0, age: 0)
-                    current.amount += due
-                    if days > current.age { current.age = days }
-                    customerTotals[invoice.customerId] = current
+                // One allocation (ReceivablesCalculator) drives the aging report,
+                // so advances and unlinked payments settle the oldest dues here
+                // exactly as they do on the dashboard, sales table and
+                // customers screen — the buckets can never disagree with them.
+                for customer in receivables.byCustomer {
+                    let id = customer.customerId
+                    // Carry-forward opening balance folds in as old dues.
+                    if customer.openingDuePaise > 0 {
+                        buckets[3].count += 1
+                        buckets[3].amountPaise += customer.openingDuePaise
+                        var current = customerTotals[id] ?? (amount: 0, age: 0)
+                        current.amount += customer.openingDuePaise
+                        current.age = max(current.age, 120)
+                        customerTotals[id] = current
+                    }
+                    for invoiceDue in customer.invoices where invoiceDue.duePaise > 0 {
+                        let days = calendar.dateComponents(
+                            [.day],
+                            from: calendar.startOfDay(for: invoiceDue.date),
+                            to: today
+                        ).day ?? 0
+                        let index = days <= 30 ? 0 : (days <= 60 ? 1 : (days <= 90 ? 2 : 3))
+                        buckets[index].count += 1
+                        buckets[index].amountPaise += invoiceDue.duePaise
+                        var current = customerTotals[id] ?? (amount: 0, age: 0)
+                        current.amount += invoiceDue.duePaise
+                        if days > current.age { current.age = days }
+                        customerTotals[id] = current
+                    }
                 }
                 let allCustomers = try Customer.fetchAll(db)
-
-                // Fold customer opening balances in as old dues (deepest bucket).
-                for customer in allCustomers {
-                    guard let id = customer.id, customer.openingBalancePaise > 0 else { continue }
-                    buckets[3].count += 1
-                    buckets[3].amountPaise += customer.openingBalancePaise
-                    var current = customerTotals[id] ?? (amount: 0, age: 0)
-                    current.amount += customer.openingBalancePaise
-                    current.age = max(current.age, 120)
-                    customerTotals[id] = current
-                }
 
                 var nameById: [Int64: String] = [:]
                 for customer in allCustomers {

@@ -23,6 +23,14 @@ struct Payment: Identifiable, Codable, Equatable, Hashable, Sendable {
         case advance = "advance"
         case againstInvoice = "againstInvoice"
         case other = "other"
+
+        var label: String {
+            switch self {
+            case .advance: "Advance"
+            case .againstInvoice: "Against invoice"
+            case .other: "Other"
+            }
+        }
     }
 
     enum Mode: String, Codable, Sendable, CaseIterable, Identifiable {

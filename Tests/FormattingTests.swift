@@ -57,4 +57,23 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Format.kg(fromTonnes: "0.001"), 1)
         XCTAssertEqual(Format.kg(fromTonnes: ""), 0)
     }
+
+    func testPaiseRoundsHalfAwayFromZeroExactly() {
+        XCTAssertEqual(Format.paise("1.005"), 101)   // 100.5 paise → 101
+        XCTAssertEqual(Format.paise("1.004"), 100)   // 100.4 paise → 100
+        XCTAssertEqual(Format.paise("-1.005"), -101) // rounds away from zero
+        XCTAssertEqual(Format.paise(".50"), 50)
+        XCTAssertEqual(Format.paise("12."), 1_200)
+        XCTAssertEqual(Format.paise("2.5"), 250)
+        XCTAssertEqual(Format.paise("+15"), 1_500)
+        XCTAssertEqual(Format.paise("1.2.3"), 0)     // malformed
+        XCTAssertEqual(Format.paise("--5"), 0)
+    }
+
+    func testKilogramsRoundsHalfAwayFromZeroExactly() {
+        XCTAssertEqual(Format.kg(fromTonnes: "0.0005"), 1)   // 0.5 kg → 1
+        XCTAssertEqual(Format.kg(fromTonnes: "0.0045"), 5)   // 4.5 kg → 5
+        XCTAssertEqual(Format.kg(fromTonnes: "1.9995"), 2_000)
+        XCTAssertEqual(Format.kg(fromTonnes: "-0.0025"), -3) // -2.5 kg → -3
+    }
 }

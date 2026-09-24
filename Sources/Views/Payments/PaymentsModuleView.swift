@@ -10,12 +10,14 @@ struct PaymentRow: Identifiable, Equatable {
 
 struct PaymentsModuleView: View {
     @Environment(\.appDatabase) private var db
+    @Environment(AppState.self) private var appState
     @State private var rows: [PaymentRow] = []
     @State private var selection: Int64?
     @State private var editor: PaymentEditorContext?
     @State private var confirmDelete = false
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var loaded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xl) {
@@ -43,9 +45,11 @@ struct PaymentsModuleView: View {
             }
         }
         .padding(DS.Spacing.xl)
+        .frame(maxWidth: 1280)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Payments")
+        .loadingOverlay(!loaded)
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search party, invoice or reference")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -72,14 +76,14 @@ struct PaymentsModuleView: View {
             }
         }
         .sheet(item: $editor) { context in
-            PaymentEditorView(context: context) { reload() }
+            PaymentEditorView(context: context) { Task { await reload() } }
         }
         .destructiveConfirmation(
             title: "Delete this payment?",
             message: "The party balance will be recalculated without it.",
             destructiveLabel: "Delete",
             isPresented: $confirmDelete
-        ) { deleteSelected() }
+        ) { Task { await deleteSelected() } }
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -88,7 +92,22 @@ struct PaymentsModuleView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
+        .task { await reload(); loaded = true }
+        .onAppear { consumePendingPaymentDraft() }
+    }
+
+    /// Opens the payment editor pre-filled for a draft handed off from the
+    /// Sales screen ("record payment against this invoice"), then clears the
+    /// draft so it is not replayed on every appearance.
+    private func consumePendingPaymentDraft() {
+        guard let draft = appState.pendingPaymentDraft else { return }
+        appState.pendingPaymentDraft = nil
+        editor = PaymentEditorContext(
+            payment: nil,
+            prefillCustomerId: draft.customerId,
+            prefillInvoiceId: draft.invoiceId,
+            prefillAmountText: draft.amountHintPaise.map { String(format: "%.2f", Double($0) / 100) }
+        )
     }
 
     @ViewBuilder
@@ -109,12 +128,17 @@ struct PaymentsModuleView: View {
                 }
             }
             TableColumn("Type") { row in
-                Badge(
-                    text: row.payment.partyType == .customer ? "Received" : "Paid",
-                    tint: row.payment.partyType == .customer ? DS.Color.success : DS.Color.warning
-                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Badge(
+                        text: row.payment.partyType == .customer ? "Received" : "Paid",
+                        tint: row.payment.partyType == .customer ? DS.Color.success : DS.Color.warning
+                    )
+                    Text(row.payment.kind.label)
+                        .font(DS.Font.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .width(min: 90, ideal: 100)
+            .width(min: 105, ideal: 115)
             TableColumn("Mode") { row in
                 Text(row.payment.mode.label)
                     .font(DS.Font.footnote)
@@ -155,6 +179,7 @@ struct PaymentsModuleView: View {
                 || (row.invoiceNo?.localizedLowercase.contains(query) ?? false)
                 || (row.payment.refNo?.localizedLowercase.contains(query) ?? false)
                 || row.payment.mode.label.localizedLowercase.contains(query)
+                || row.payment.kind.label.localizedLowercase.contains(query)
         }
     }
 
@@ -177,22 +202,22 @@ struct PaymentsModuleView: View {
         }
     }
 
-    private func deleteSelected() {
+    private func deleteSelected() async {
         guard let id = selection,
               let paymentID = rows.first(where: { $0.id == id })?.payment.id else { return }
         do {
-            try db.dbQueue.write { db in
+            try await db.writeAsync { db in
                 try Payment.deleteOne(db, key: paymentID)
             }
-            reload()
+            await reload()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func reload() {
+    private func reload() async {
         do {
-            rows = try db.dbQueue.read { db -> [PaymentRow] in
+            rows = try await db.readAsync { db -> [PaymentRow] in
                 let payments = try Payment.order(Column("date").desc, Column("id").desc).fetchAll(db)
                 let customers = try Customer.fetchAll(db)
                 let suppliers = try Supplier.fetchAll(db)
@@ -231,6 +256,9 @@ struct PaymentsModuleView: View {
 struct PaymentEditorContext: Identifiable {
     let id = UUID()
     let payment: Payment?
+    var prefillCustomerId: Int64? = nil
+    var prefillInvoiceId: Int64? = nil
+    var prefillAmountText: String? = nil
 }
 
 struct PaymentEditorView: View {
@@ -256,13 +284,13 @@ struct PaymentEditorView: View {
     init(context: PaymentEditorContext, onSave: @escaping () -> Void) {
         self.context = context
         self.onSave = onSave
-        let payment = context.payment ?? Payment(date: .now, partyType: .customer, partyId: 0, amountPaise: 0)
+        let payment = context.payment ?? Payment(date: .now, partyType: .customer, partyId: context.prefillCustomerId ?? 0, amountPaise: 0)
         _date = State(initialValue: payment.date)
         _partyType = State(initialValue: payment.partyType)
-        _partyId = State(initialValue: payment.partyId > 0 ? payment.partyId : nil)
-        _kind = State(initialValue: payment.kind)
-        _invoiceId = State(initialValue: payment.invoiceId)
-        _amountText = State(initialValue: String(format: "%.2f", Double(payment.amountPaise) / 100))
+        _partyId = State(initialValue: context.prefillCustomerId ?? (payment.partyId > 0 ? payment.partyId : nil))
+        _kind = State(initialValue: context.prefillInvoiceId != nil ? .againstInvoice : payment.kind)
+        _invoiceId = State(initialValue: context.prefillInvoiceId ?? payment.invoiceId)
+        _amountText = State(initialValue: context.prefillAmountText ?? String(format: "%.2f", Double(payment.amountPaise) / 100))
         _mode = State(initialValue: payment.mode)
         _refNo = State(initialValue: payment.refNo ?? "")
         _notes = State(initialValue: payment.notes ?? "")
@@ -270,6 +298,13 @@ struct PaymentEditorView: View {
 
     private var amountPaise: Int64 {
         Format.paise(amountText)
+    }
+
+    /// Invoices for the currently selected customer only, so a payment can
+    /// never be linked to another party's invoice.
+    private var scopedInvoices: [SalesInvoice] {
+        guard partyType == .customer, let partyID = partyId else { return [] }
+        return invoices.filter { $0.customerId == partyID }
     }
 
     private var canSave: Bool {
@@ -292,6 +327,9 @@ struct PaymentEditorView: View {
                     }
                     .onChange(of: partyType) { _, _ in
                         partyId = nil
+                        invoiceId = nil
+                    }
+                    .onChange(of: partyId) { _, _ in
                         invoiceId = nil
                     }
                     if partyType == .customer {
@@ -321,10 +359,15 @@ struct PaymentEditorView: View {
                     if partyType == .customer && kind == .againstInvoice {
                         Picker("Invoice", selection: $invoiceId) {
                             Text("General").tag(Int64?.none)
-                            ForEach(invoices) { invoice in
+                            ForEach(scopedInvoices) { invoice in
                                 Text("\(invoice.invoiceNo) · \(Format.inr(invoice.grandTotalPaise))")
                                     .tag(Int64?(invoice.id ?? 0))
                             }
+                        }
+                        if scopedInvoices.isEmpty {
+                            Text("No invoices on record for this customer yet.")
+                                .font(DS.Font.footnote)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     TextField("Amount (₹)", text: $amountText)
@@ -350,20 +393,20 @@ struct PaymentEditorView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { save() }
+                Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 520)
+        .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
-        .task { loadData() }
+        .task { await loadData() }
     }
 
-    private func loadData() {
+    private func loadData() async {
         do {
-            let loaded = try db.dbQueue.read { db -> (customers: [Customer], suppliers: [Supplier], invoices: [SalesInvoice]) in
+            let loaded = try await db.readAsync { db -> (customers: [Customer], suppliers: [Supplier], invoices: [SalesInvoice]) in
                 let customers = try Customer.filter(Column("isActive") == true).order(Column("name")).fetchAll(db)
                 let suppliers = try Supplier.filter(Column("isActive") == true).order(Column("name")).fetchAll(db)
                 let invoices = try SalesInvoice
@@ -374,33 +417,47 @@ struct PaymentEditorView: View {
             }
             customers = loaded.customers
             suppliers = loaded.suppliers
-            if partyType == .customer {
-                invoices = loaded.invoices
-            }
+            invoices = loaded.invoices
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func save() {
+    private func save() async {
         guard let partyID = partyId else { return }
+        if partyType == .customer && kind == .againstInvoice,
+           let invoiceID = invoiceId,
+           let invoice = invoices.first(where: { $0.id == invoiceID }),
+           invoice.customerId != partyID {
+            errorMessage = "The selected invoice belongs to a different customer. Choose the correct invoice or leave it unassigned."
+            return
+        }
+        let formDate = date
+        let formPartyType = partyType
+        let formKind = kind
+        let formInvoiceId = (partyType == .customer && kind == .againstInvoice) ? invoiceId : nil
+        let formAmount = amountPaise
+        let formMode = mode
+        let formRefNo = trimmedNil(refNo)
+        let formNotes = trimmedNil(notes)
+        let existingPayment = context.payment
         do {
-            try db.dbQueue.write { db in
-                var payment = context.payment ?? Payment(
-                    date: date,
-                    partyType: partyType,
+            try await db.writeAsync { db in
+                var payment = existingPayment ?? Payment(
+                    date: formDate,
+                    partyType: formPartyType,
                     partyId: partyID,
-                    amountPaise: amountPaise
+                    amountPaise: formAmount
                 )
-                payment.date = date
-                payment.partyType = partyType
+                payment.date = formDate
+                payment.partyType = formPartyType
                 payment.partyId = partyID
-                payment.kind = kind
-                payment.invoiceId = (partyType == .customer && kind == .againstInvoice) ? invoiceId : nil
-                payment.amountPaise = amountPaise
-                payment.mode = mode
-                payment.refNo = trimmedNil(refNo)
-                payment.notes = trimmedNil(notes)
+                payment.kind = formKind
+                payment.invoiceId = formInvoiceId
+                payment.amountPaise = formAmount
+                payment.mode = formMode
+                payment.refNo = formRefNo
+                payment.notes = formNotes
                 try payment.save(db)
             }
             onSave()

@@ -16,6 +16,11 @@ struct SettingsView: View {
     @State private var backupDocument: DatabaseBackupDocument?
     @State private var backupFileName = "PaashERP-backup.sqlite"
 
+    @State private var showRestoreImporter = false
+    @State private var pendingRestoreURL: URL?
+    @State private var confirmRestore = false
+    @State private var restoreError: String?
+
     @State private var confirmClear = false
     @State private var confirmReseed = false
     @State private var noticeMessage: String?
@@ -44,7 +49,7 @@ struct SettingsView: View {
                                     .font(DS.Font.footnote)
                                     .foregroundStyle(DS.Color.success)
                             }
-                            Button("Save profile") { saveProfile() }
+                            Button("Save profile") { Task { await saveProfile() } }
                                 .buttonStyle(.borderedProminent)
                                 .disabled(!dirty)
                         }
@@ -90,7 +95,7 @@ struct SettingsView: View {
                 CardContainer {
                     VStack(alignment: .leading, spacing: DS.Spacing.lg) {
                         SectionHeading(title: "Backups")
-                        Text("Take a copy of the whole database file to keep with your records. A daily snapshot is also kept locally.")
+                        Text("Take a consistent snapshot of the whole database to keep with your records — safe to capture even while you are working.")
                             .font(DS.Font.caption)
                             .foregroundStyle(.secondary)
                         HStack {
@@ -101,6 +106,18 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(appState.databaseURL == nil)
+                            Button {
+                                showRestoreImporter = true
+                            } label: {
+                                Label("Restore backup…", systemImage: "arrow.down.doc.fill")
+                            }
+                            .disabled(appState.databaseURL == nil)
+                            .destructiveConfirmation(
+                                title: "Restore this backup?",
+                                message: "All current data on this Mac is replaced by the contents of the backup. Back up the current data first if you need to keep it.",
+                                destructiveLabel: "Restore backup",
+                                isPresented: $confirmRestore
+                            ) { restorePendingBackup() }
                             if let url = appState.databaseURL {
                                 Text(url.path)
                                     .font(DS.Font.footnote)
@@ -109,6 +126,9 @@ struct SettingsView: View {
                                     .truncationMode(.middle)
                             }
                         }
+                        Text("Restoring replaces all current data with the selected backup, after validating it.")
+                            .font(DS.Font.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -129,6 +149,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .background(DS.Color.contentBackground)
+        .navigationTitle("Settings & Backup")
         .fileExporter(
             isPresented: $showExporter,
             document: backupDocument,
@@ -142,7 +163,34 @@ struct SettingsView: View {
                 noticeMessage = error.localizedDescription
             }
         }
-        .task { loadProfile() }
+        .fileImporter(
+            isPresented: $showRestoreImporter,
+            allowedContentTypes: [.database],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                do {
+                    try BackupRestore.validateBackup(at: url)
+                    pendingRestoreURL = url
+                    confirmRestore = true
+                } catch {
+                    restoreError = error.localizedDescription
+                }
+            case .failure(let error):
+                restoreError = error.localizedDescription
+            }
+        }
+        .alert("Cannot restore this backup", isPresented: Binding(
+            get: { restoreError != nil },
+            set: { if !$0 { restoreError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(restoreError ?? "")
+        }
+        .task { await loadProfile() }
     }
 
     private func settingsField(_ label: String, text: Binding<String>) -> some View {
@@ -160,9 +208,9 @@ struct SettingsView: View {
         }
     }
 
-    private func loadProfile() {
+    private func loadProfile() async {
         do {
-            let profile = try db.dbQueue.read { db -> [String: String] in
+            let profile = try await db.readAsync { db -> [String: String] in
                 let keys = ["business_name", "business_gstin", "business_address", "business_city", "business_state"]
                 var values: [String: String] = [:]
                 for key in keys {
@@ -181,14 +229,19 @@ struct SettingsView: View {
         }
     }
 
-    private func saveProfile() {
+    private func saveProfile() async {
+        let formName = businessName
+        let formGstin = gstin
+        let formAddress = address
+        let formCity = city
+        let formState = state
         do {
-            try db.dbQueue.write { db in
-                try AppSetting.set(key: "business_name", value: businessName, db: db)
-                try AppSetting.set(key: "business_gstin", value: gstin, db: db)
-                try AppSetting.set(key: "business_address", value: address, db: db)
-                try AppSetting.set(key: "business_city", value: city, db: db)
-                try AppSetting.set(key: "business_state", value: state, db: db)
+            try await db.writeAsync { db in
+                try AppSetting.set(key: "business_name", value: formName, db: db)
+                try AppSetting.set(key: "business_gstin", value: formGstin, db: db)
+                try AppSetting.set(key: "business_address", value: formAddress, db: db)
+                try AppSetting.set(key: "business_city", value: formCity, db: db)
+                try AppSetting.set(key: "business_state", value: formState, db: db)
             }
             dirty = false
             saved = true
@@ -198,34 +251,61 @@ struct SettingsView: View {
     }
 
     private func clearAll() {
-        do {
-            try appState.resetDatabase(seed: false)
-            noticeMessage = "Data cleared. Start fresh or reinstall demo data."
-            loadProfile()
-        } catch {
-            noticeMessage = error.localizedDescription
+        Task {
+            do {
+                try await appState.resetDatabase(seed: false)
+                noticeMessage = "Data cleared. Start fresh or reinstall demo data."
+                await loadProfile()
+            } catch {
+                noticeMessage = error.localizedDescription
+            }
         }
     }
 
     private func reseed() {
+        Task {
+            do {
+                try await appState.resetDatabase(seed: true)
+                noticeMessage = "Demo data reinstalled."
+                await loadProfile()
+            } catch {
+                noticeMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func prepareBackup() {
+        guard let url = appState.databaseURL else {
+            noticeMessage = "The database is not available for backup."
+            return
+        }
         do {
-            try appState.resetDatabase(seed: true)
-            noticeMessage = "Demo data reinstalled."
-            loadProfile()
+            // Snapshot into a temp file through SQLite's Online Backup API
+            // (consistent even mid-write), then hand the bytes to the exporter.
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("PaashERP-backup-\(UUID().uuidString).sqlite")
+            try BackupRestore.createBackup(from: db.dbQueue, to: tempURL)
+            let data = try Data(contentsOf: tempURL)
+            try? FileManager.default.removeItem(at: tempURL)
+            backupDocument = DatabaseBackupDocument(data: data)
+            let stamp = Format.shortDate(.now).replacingOccurrences(of: "/", with: "-")
+            backupFileName = "PaashERP-backup-\(stamp).sqlite"
+            showExporter = true
         } catch {
             noticeMessage = error.localizedDescription
         }
     }
 
-    private func prepareBackup() {
-        guard let url = appState.databaseURL,
-              let data = try? Data(contentsOf: url) else {
-            noticeMessage = "Could not read the database for backup."
-            return
+    private func restorePendingBackup() {
+        guard let url = pendingRestoreURL else { return }
+        do {
+            try appState.restoreBackup(from: url)
+            pendingRestoreURL = nil
+            noticeMessage = "Backup restored. All screens now show the restored data."
+            Task { await loadProfile() }
+        } catch {
+            pendingRestoreURL = nil
+            restoreError = error.localizedDescription
         }
-        backupDocument = DatabaseBackupDocument(data: data)
-        let stamp = Format.shortDate(.now).replacingOccurrences(of: "/", with: "-")
-        backupFileName = "PaashERP-backup-\(stamp).sqlite"
-        showExporter = true
     }
 }

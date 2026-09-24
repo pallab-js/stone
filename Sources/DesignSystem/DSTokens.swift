@@ -15,7 +15,6 @@ enum DS {
         static let sidebar = SwiftUI.Color(red: 0.063, green: 0.094, blue: 0.145)
         static let sidebarText = SwiftUI.Color.white.opacity(0.92)
         static let sidebarMuted = SwiftUI.Color.white.opacity(0.55)
-        static let sidebarSelected = accent.opacity(0.22)
 
         static let contentBackground = SwiftUI.Color(nsColor: .textBackgroundColor)
         static let cardBackground = SwiftUI.Color(nsColor: .controlBackgroundColor)
@@ -64,5 +63,10 @@ enum DS {
         static let small: CGFloat = 6
         static let standard: CGFloat = 10
         static let large: CGFloat = 14
+    }
+
+    enum SheetWidth {
+        static let editor: CGFloat = 520
+        static let editorWide: CGFloat = 620
     }
 }

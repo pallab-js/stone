@@ -357,6 +357,7 @@ struct InvoiceDocumentLoader {
 struct InvoicePreviewSheet: View {
     let data: InvoiceDocumentData
     @Environment(\.dismiss) private var dismiss
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -376,11 +377,25 @@ struct InvoicePreviewSheet: View {
             }
         }
         .frame(width: 760, height: 820)
+        .alert("Export failed", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func exportPDF() {
         guard let pdf = DocumentExport.pdfData(root: InvoiceDocumentView(data: data)) else { return }
-        DocumentExport.save(pdf, suggestedName: "\(data.invoice.invoiceNo).pdf", fileType: .pdf)
+        DocumentExport.save(
+            pdf,
+            suggestedName: "\(data.invoice.invoiceNo).pdf",
+            fileType: .pdf
+        ) { error in
+            errorMessage = "Could not save the PDF: \(error.localizedDescription)"
+        }
     }
 
     @MainActor

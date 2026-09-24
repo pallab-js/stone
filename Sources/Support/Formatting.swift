@@ -123,16 +123,72 @@ enum Format {
 
     /// Parses a user-typed rupee amount into paise. Empty or invalid input → 0.
     /// Handles Indian digit grouping: "15,000" → 1,500,000 paise (₹15,000).
+    /// Uses exact decimal parsing (no floating-point round-trip).
     static func paise(_ text: String) -> Int64 {
-        guard let value = parse(text) else { return 0 }
-        return Int64((value * 100).rounded())
+        parseScaled(text, scale: 100, scaleDigits: 2) ?? 0
     }
 
     /// Parses a user-typed tonne quantity into kilograms. Empty or invalid input → 0.
-    /// "12.5" → 12,500 kg.
+    /// "12.5" → 12,500 kg. Uses exact decimal parsing (no floating-point round-trip).
     static func kg(fromTonnes text: String) -> Int64 {
-        guard let value = parse(text) else { return 0 }
-        return Int64((value * 1000).rounded())
+        parseScaled(text, scale: 1000, scaleDigits: 3) ?? 0
+    }
+
+    /// Parses a decimal string into `scale`-scale integer units (paise when
+    /// `scale` is 100, kilograms when 1000) without any floating-point
+    /// round-trip. Commas are treated as Indian grouping separators. Rounding
+    /// is half-away-from-zero on the first overflow digit. Returns nil for
+    /// empty or malformed input or values that do not fit an Int64.
+    private static func parseScaled(_ text: String, scale: Int64, scaleDigits: Int) -> Int64? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        var negative = false
+        var integerDigits = ""
+        var fractionDigits = ""
+        var sawDot = false
+
+        for character in trimmed {
+            if character >= "0" && character <= "9" {
+                if sawDot {
+                    fractionDigits.append(character)
+                } else {
+                    integerDigits.append(character)
+                }
+            } else if character == "," {
+                // Indian thousands-grouping separator — ignored.
+            } else if character == "." {
+                guard !sawDot else { return nil }
+                sawDot = true
+            } else if character == "-" {
+                guard !negative, integerDigits.isEmpty, !sawDot else { return nil }
+                negative = true
+            } else if character == "+" {
+                guard integerDigits.isEmpty, !sawDot else { return nil }
+            } else {
+                return nil
+            }
+        }
+        guard !integerDigits.isEmpty || !fractionDigits.isEmpty else { return nil }
+
+        guard let integerPart = Int64(integerDigits.isEmpty ? "0" : integerDigits),
+              integerPart <= Int64.max / scale else { return nil }
+
+        var value = integerPart * scale
+        if !fractionDigits.isEmpty {
+            let keepCount = min(fractionDigits.count, scaleDigits)
+            let keptFraction = String(fractionDigits.prefix(keepCount))
+            if let keptValue = Int64(keptFraction) {
+                var divisor: Int64 = 1
+                for _ in 0..<keepCount { divisor *= 10 }
+                value += keptValue * (scale / divisor)
+            }
+            if fractionDigits.count > scaleDigits {
+                let overflowIndex = fractionDigits.index(fractionDigits.startIndex, offsetBy: scaleDigits)
+                if fractionDigits[overflowIndex] >= Character("5") { value += 1 }
+            }
+        }
+        return negative ? -value : value
     }
 
     static func day(_ date: Date) -> String {

@@ -19,21 +19,34 @@ enum DocumentExport {
     }
 
     @MainActor
-    static func save(_ data: Data, suggestedName: String, fileType: UTType) {
+    static func save(
+        _ data: Data,
+        suggestedName: String,
+        fileType: UTType,
+        onError: @escaping @MainActor (Error) -> Void = { _ in }
+    ) {
         guard data.count > 0 else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [fileType]
         panel.nameFieldStringValue = suggestedName
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                onError(error)
+            }
         }
     }
 
     @MainActor
-    static func saveCSV(_ content: String, suggestedName: String) {
+    static func saveCSV(
+        _ content: String,
+        suggestedName: String,
+        onError: @escaping @MainActor (Error) -> Void = { _ in }
+    ) {
         let data = Data(content.utf8)
-        save(data, suggestedName: suggestedName, fileType: .commaSeparatedText)
+        save(data, suggestedName: suggestedName, fileType: .commaSeparatedText, onError: onError)
     }
 }
 

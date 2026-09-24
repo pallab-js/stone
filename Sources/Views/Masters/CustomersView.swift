@@ -10,68 +10,38 @@ struct CustomerRowModel: Identifiable, Equatable {
 struct CustomersView: View {
     @Environment(\.appDatabase) private var db
     @State private var rows: [CustomerRowModel] = []
-    @State private var search = ""
-    @State private var selection: Int64?
-    @State private var editor: CustomerEditorContext?
-    @State private var confirmDelete = false
     @State private var errorMessage: String?
 
-    private var filteredRows: [CustomerRowModel] {
-        guard !search.isEmpty else { return rows }
-        return rows.filter {
-            $0.customer.name.localizedCaseInsensitiveContains(search)
-                || ($0.customer.city ?? "").localizedCaseInsensitiveContains(search)
-                || ($0.customer.gstin ?? "").lowercased().contains(search.lowercased())
-        }
-    }
-
     var body: some View {
-        Group {
-            if filteredRows.isEmpty {
-                EmptyStateView(
-                    icon: "person.2",
-                    title: search.isEmpty ? "No customers yet" : "No matches for “\(search)”",
-                    message: "Add the buyers of your aggregates — contractors, builders, RMC plants and government projects."
-                )
-            } else {
-                table
-            }
-        }
-        .searchable(text: $search, prompt: "Search customers")
-        .navigationTitle("Customers")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    editor = CustomerEditorContext(customer: nil)
-                } label: {
-                    Label("Add Customer", systemImage: "plus")
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                Button {
-                    if let row = selectedRow { startEditing(row) }
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
-                .keyboardShortcut("e", modifiers: .command)
-                .disabled(selection == nil)
-                Button(role: .destructive) {
-                    confirmDelete = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .keyboardShortcut(.delete, modifiers: [])
-                .disabled(selection == nil)
-            }
-        }
-        .sheet(item: $editor) { context in
-            CustomerEditorView(context: context) { reload() }
-        }
-        .destructiveConfirmation(
-            title: "Delete customer?",
-            message: "Customers without invoices are removed. Those with records are deactivated instead — existing invoices keep their customer snapshot.",
-            destructiveLabel: "Delete",
-            isPresented: $confirmDelete
-        ) { deleteSelected() }
+        MasterListView(
+            rows: rows,
+            navigationTitle: "Customers",
+            searchPrompt: "Search customers",
+            addLabel: "Add Customer",
+            emptyIcon: "person.2",
+            emptyTitle: "No customers yet",
+            emptyMessage: "Add the buyers of your aggregates — contractors, builders, RMC plants and government projects.",
+            deleteConfirmationTitle: "Delete customer?",
+            deleteConfirmationMessage: "Customers without invoices are removed. Those with records are deactivated instead — existing invoices keep their customer snapshot.",
+            filter: { row, query in
+                row.customer.name.localizedCaseInsensitiveContains(query)
+                    || (row.customer.city ?? "").localizedCaseInsensitiveContains(query)
+                    || (row.customer.gstin ?? "").lowercased().contains(query.lowercased())
+            },
+            deactivationMessage: { row in
+                "“\(row.customer.name)” has invoices or payments on record, so it was deactivated instead of deleted."
+            },
+            makeNewContext: { CustomerEditorContext(customer: nil) },
+            makeEditContext: { CustomerEditorContext(customer: $0.customer) },
+            editorSheet: { context, onSave in
+                CustomerEditorView(context: context, onSave: onSave)
+            },
+            deleteEntity: { database, id in
+                try MasterDeletion.delete(Customer.self, id: id, db: database)
+            },
+            table: customerTable,
+            onReload: { Task { await reload() } }
+        )
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -80,12 +50,15 @@ struct CustomersView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
     }
 
-    @ViewBuilder
-    private var table: some View {
-        Table(of: CustomerRowModel.self, selection: $selection) {
+    private func customerTable(
+        _ selection: Binding<Int64?>,
+        _ rows: [CustomerRowModel],
+        _ startEditing: @escaping (CustomerRowModel) -> Void,
+        _ deleteRow: @escaping (CustomerRowModel) -> Void
+    ) -> some View {
+        Table(of: CustomerRowModel.self, selection: selection) {
             TableColumn("Customer") { row in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.customer.name)
@@ -122,8 +95,9 @@ struct CustomersView: View {
                         .font(DS.Font.tableValue)
                         .foregroundStyle(DS.Color.danger)
                 } else {
-                    Text("—")
-                        .foregroundStyle(.tertiary)
+                    Text("Settled")
+                        .font(DS.Font.footnote)
+                        .foregroundStyle(DS.Color.success)
                 }
             }
             .width(min: 110, ideal: 130)
@@ -135,83 +109,37 @@ struct CustomersView: View {
             }
             .width(min: 80, ideal: 90)
         } rows: {
-            ForEach(filteredRows) { (row: CustomerRowModel) in
+            ForEach(rows) { (row: CustomerRowModel) in
                 TableRow(row)
-                    .contextMenu { rowContextMenu(row) }
+                    .contextMenu {
+                        Button("Edit") { startEditing(row) }
+                        Button("Delete", role: .destructive) { deleteRow(row) }
+                    }
             }
         }
         .alternatingRowBackgrounds()
         .contextMenu(forSelectionType: Int64.self) { selections in
             if let id = selections.first, let row = rows.first(where: { $0.id == id }) {
                 Button("Edit") { startEditing(row) }
-            }
-            Button("Delete", role: .destructive) { confirmDelete = true }
-        }
-    }
-
-    private var selectedRow: CustomerRowModel? {
-        guard let selection else { return nil }
-        return rows.first { $0.id == selection }
-    }
-
-    private func startEditing(_ row: CustomerRowModel) {
-        editor = CustomerEditorContext(customer: row.customer)
-    }
-
-    private func rowContextMenu(_ row: CustomerRowModel) -> some View {
-        Group {
-            Button("Edit") { startEditing(row) }
-            Button("Delete", role: .destructive) {
-                selection = row.id
-                confirmDelete = true
+                Button("Delete", role: .destructive) { deleteRow(row) }
             }
         }
     }
 
-    private func deleteSelected() {
-        guard let id = selection,
-              let row = rows.first(where: { $0.id == id }),
-              let customerID = row.customer.id else { return }
+    private func reload() async {
         do {
-            let outcome = try db.dbQueue.write { db in
-                try MasterDeletion.delete(Customer.self, id: customerID, db: db)
-            }
-            if outcome == .deactivated {
-                errorMessage = "“\(row.customer.name)” has invoices or payments on record, so it was deactivated instead of deleted."
-            }
-            reload()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reload() {
-        do {
-            rows = try db.dbQueue.read { db in
+            rows = try await db.readAsync { db in
                 let customers = try Customer.order(Column("name")).fetchAll(db)
-                struct PartyTotals: Decodable, FetchableRecord {
-                    var partyId: Int64
-                    var amountPaise: Int64
+                let receivables = try ReceivablesCalculator.snapshot(db: db)
+                var outstanding: [Int64: Int64] = [:]
+                for customer in receivables.byCustomer {
+                    outstanding[customer.customerId] = customer.outstandingPaise
                 }
-                let cancelled = SalesInvoice.Status.cancelled.rawValue
-                let invoicedRows = try PartyTotals.fetchAll(
-                    db,
-                    sql: "SELECT customerId AS partyId, SUM(grandTotalPaise) AS amountPaise FROM salesInvoices WHERE status != ? GROUP BY customerId",
-                    arguments: [cancelled]
-                )
-                let paidRows = try PartyTotals.fetchAll(
-                    db,
-                    sql: "SELECT partyId, SUM(amountPaise) AS amountPaise FROM payments WHERE partyType = ? GROUP BY partyId",
-                    arguments: [Payment.PartyType.customer.rawValue]
-                )
-                var invoiced: [Int64: Int64] = [:]
-                for row in invoicedRows { invoiced[row.partyId] = row.amountPaise }
-                var paid: [Int64: Int64] = [:]
-                for row in paidRows { paid[row.partyId] = row.amountPaise }
                 return customers.map { customer in
-                    let id = customer.id ?? 0
-                    let outstanding = max(0, (invoiced[id] ?? 0) - (paid[id] ?? 0) + customer.openingBalancePaise)
-                    return CustomerRowModel(customer: customer, outstandingPaise: outstanding)
+                    CustomerRowModel(
+                        customer: customer,
+                        outstandingPaise: outstanding[customer.id ?? 0] ?? 0
+                    )
                 }
             }
         } catch {
@@ -300,29 +228,39 @@ struct CustomerEditorView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { save() }
+                Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 460)
+        .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
     }
 
-    private func save() {
+    private func save() async {
+        let formName = name.trimmingCharacters(in: .whitespaces)
+        let formGstin = trimmedOrNil(gstin)
+        let formPhone = trimmedOrNil(phone)
+        let formAddress = trimmedOrNil(address)
+        let formCity = trimmedOrNil(city)
+        let formState = trimmedOrNil(state)
+        let formCreditLimit = parsedPaise(creditLimit)
+        let formOpeningBalance = parsedPaise(openingBalance)
+        let formIsActive = isActive
+        let existingCustomer = context.customer
         do {
-            try db.dbQueue.write { db in
-                var customer = context.customer ?? Customer(name: "")
-                customer.name = name.trimmingCharacters(in: .whitespaces)
-                customer.gstin = trimmedOrNil(gstin)
-                customer.phone = trimmedOrNil(phone)
-                customer.address = trimmedOrNil(address)
-                customer.city = trimmedOrNil(city)
-                customer.state = trimmedOrNil(state)
-                customer.creditLimitPaise = parsedPaise(creditLimit)
-                customer.openingBalancePaise = parsedPaise(openingBalance)
-                customer.isActive = isActive
+            try await db.writeAsync { db in
+                var customer = existingCustomer ?? Customer(name: "")
+                customer.name = formName
+                customer.gstin = formGstin
+                customer.phone = formPhone
+                customer.address = formAddress
+                customer.city = formCity
+                customer.state = formState
+                customer.creditLimitPaise = formCreditLimit
+                customer.openingBalancePaise = formOpeningBalance
+                customer.isActive = formIsActive
                 if customer.id == nil {
                     customer.createdAt = .now
                 }

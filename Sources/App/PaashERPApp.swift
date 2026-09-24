@@ -7,6 +7,7 @@ struct PaashERPApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .id(appState.dataEpoch)
                 .environment(appState)
                 .environment(\.appDatabase, appState.database)
                 .tint(DS.Color.accent)

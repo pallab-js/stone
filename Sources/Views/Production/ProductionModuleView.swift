@@ -18,6 +18,7 @@ struct ProductionModuleView: View {
     @State private var monthProductionKg: Int64 = 0
     @State private var monthDieselLitres: Double = 0
     @State private var searchText = ""
+    @State private var loaded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xl) {
@@ -26,7 +27,10 @@ struct ProductionModuleView: View {
                 subtitle: "Crushing batches recorded per shift — every entry feeds stock automatically."
             )
 
-            HStack(spacing: DS.Spacing.m) {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 215), spacing: DS.Spacing.m, alignment: .top)],
+                spacing: DS.Spacing.m
+            ) {
                 KPIValueCard(
                     title: "This month's output",
                     value: Format.tonnesLabel(monthProductionKg),
@@ -60,9 +64,11 @@ struct ProductionModuleView: View {
             }
         }
         .padding(DS.Spacing.xl)
+        .frame(maxWidth: 1280)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Production")
+        .loadingOverlay(!loaded)
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search shift, operator or notes")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -89,14 +95,14 @@ struct ProductionModuleView: View {
             }
         }
         .sheet(item: $editor) { context in
-            ProductionEditorView(context: context) { reload() }
+            ProductionEditorView(context: context) { Task { await reload() } }
         }
         .destructiveConfirmation(
             title: "Delete this production batch?",
             message: "Its output will be removed from stock.",
             destructiveLabel: "Delete",
             isPresented: $confirmDelete
-        ) { deleteSelected() }
+        ) { Task { await deleteSelected() } }
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -105,7 +111,7 @@ struct ProductionModuleView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
+        .task { await reload(); loaded = true }
     }
 
     @ViewBuilder
@@ -197,11 +203,22 @@ struct ProductionModuleView: View {
         }
     }
 
-    private func deleteSelected() {
+    private func deleteSelected() async {
         guard let id = selection,
               let batchID = rows.first(where: { $0.id == id })?.batch.id else { return }
         do {
-            try db.dbQueue.write { db in
+            try await db.writeAsync { db in
+                // Deleting a batch removes its production credits; block if the
+                // output has since been consumed and the ledger would go negative.
+                let items = try ProductionItem.filter(Column("batchId") == batchID).fetchAll(db)
+                for item in items {
+                    try StockGate.requireForRemoval(
+                        db: db,
+                        removingKg: item.qtyKg,
+                        productID: item.productId,
+                        productName: { pid in try? Product.fetchOne(db, key: pid)?.name }
+                    )
+                }
                 try StockMovement
                     .filter(Column("type") == StockMovement.MoveType.production.rawValue)
                     .filter(Column("refId") == batchID)
@@ -209,15 +226,15 @@ struct ProductionModuleView: View {
                 try ProductionItem.filter(Column("batchId") == batchID).deleteAll(db)
                 try ProductionBatch.deleteOne(db, key: batchID)
             }
-            reload()
+            await reload()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func reload() {
+    private func reload() async {
         do {
-            let (batchRows, sumKg, sumDiesel) = try db.dbQueue.read { db -> ([ProductionBatchRow], Int64, Double) in
+            let (batchRows, sumKg, sumDiesel) = try await db.readAsync { db -> ([ProductionBatchRow], Int64, Double) in
                 let batches = try ProductionBatch.order(Column("date").desc, Column("id").desc).fetchAll(db)
                 let items = try ProductionItem.fetchAll(db)
                 var totals: [Int64: Int64] = [:]
@@ -379,16 +396,16 @@ struct ProductionEditorView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { save() }
+                Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 520)
+        .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
         .task {
-            loadProducts()
+            await loadProducts()
         }
     }
 
@@ -416,16 +433,16 @@ struct ProductionEditorView: View {
         lines.removeAll { $0.id == id }
     }
 
-    private func loadProducts() {
+    private func loadProducts() async {
         do {
-            products = try db.dbQueue.read { db in
+            products = try await db.readAsync { db in
                 try Product.filter(Column("isActive") == true)
                     .order(Column("sortOrder"), Column("name"))
                     .fetchAll(db)
             }
             if context.batch != nil {
                 if let batchID = context.batch?.id {
-                    let items = try db.dbQueue.read { db in
+                    let items = try await db.readAsync { db in
                         try ProductionItem.filter(Column("batchId") == batchID).fetchAll(db)
                     }
                     for item in items {
@@ -445,50 +462,78 @@ struct ProductionEditorView: View {
         }
     }
 
-    private func save() {
-        guard let batchID = saveBatch() else { return }
+    private func save() async {
+        guard let batchID = await saveBatch() else { return }
         onSave()
         dismiss()
     }
 
-    private func saveBatch() -> Int64? {
+    private func saveBatch() async -> Int64? {
         let machineHours = Format.parse(hoursText)
         let dieselLitres = Format.parse(dieselText)
+        let formLines = lines
+        let formDate = date
+        let formShift = shift
+        let formHours = machineHours
+        let formDiesel = dieselLitres
+        let formOperator = trimmedNil(operatorName)
+        let formNotes = trimmedNil(notes)
+        let existingBatch = context.batch
         do {
-            var savedID: Int64?
-            try db.dbQueue.write { db in
-                var batch = context.batch ?? ProductionBatch(date: date)
-                batch.date = date
-                batch.shift = shift
-                batch.machineHours = machineHours
-                batch.dieselLitres = dieselLitres
-                batch.operatorName = trimmedNil(operatorName)
-                batch.notes = trimmedNil(notes)
+            let savedID = try await db.writeAsync { db -> Int64? in
+                var batch = existingBatch ?? ProductionBatch(date: formDate)
+                batch.date = formDate
+                batch.shift = formShift
+                batch.machineHours = formHours
+                batch.dieselLitres = formDiesel
+                batch.operatorName = formOperator
+                batch.notes = formNotes
                 batch.updatedAt = .now
                 if batch.createdAt == .distantPast { batch.createdAt = .now }
                 try batch.save(db)
-                guard let id = batch.id else { return }
-                savedID = id
+                guard let id = batch.id else { return nil }
 
+                // Shrinking an edited batch removes production credits that may
+                // already have been consumed by sales; block if the ledger would
+                // go negative for any product.
+                let oldItems = try ProductionItem.filter(Column("batchId") == id).fetchAll(db)
+                var newByProduct: [Int64: Int64] = [:]
+                for line in formLines where line.qtyKg > 0 {
+                    if let productID = line.productId {
+                        newByProduct[productID, default: 0] += line.qtyKg
+                    }
+                }
+                for old in oldItems {
+                    let newQty = newByProduct[old.productId] ?? 0
+                    if newQty < old.qtyKg {
+                        try StockGate.requireForRemoval(
+                            db: db,
+                            removingKg: old.qtyKg - newQty,
+                            productID: old.productId,
+                            productName: { pid in try? Product.fetchOne(db, key: pid)?.name }
+                        )
+                    }
+                }
                 try StockMovement
                     .filter(Column("type") == StockMovement.MoveType.production.rawValue)
                     .filter(Column("refId") == id)
                     .deleteAll(db)
                 try ProductionItem.filter(Column("batchId") == id).deleteAll(db)
 
-                for line in lines where line.qtyKg > 0 {
+                for line in formLines where line.qtyKg > 0 {
                     guard let productID = line.productId else { continue }
                     var item = ProductionItem(batchId: id, productId: productID, qtyKg: line.qtyKg)
                     try item.insert(db)
                     var move = StockMovement(
                         productId: productID,
-                        date: date,
+                        date: formDate,
                         type: .production,
                         qtyKg: line.qtyKg,
                         refId: id
                     )
                     try move.insert(db)
                 }
+                return id
             }
             return savedID
         } catch {

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		00F7D30C23C0AB30181EC6D9 /* BackupDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C33A89142046528D9092DA8 /* BackupDocument.swift */; };
 		0AE94FF123477FB5BF17DE9A /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A36E2AE2DA07E4C03A920C /* OverviewView.swift */; };
+		0E7386E8006CB3FAE1630131 /* InvoiceCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A2E2953B7CBCD8A7FB60E0 /* InvoiceCalculator.swift */; };
 		1741FC3144DE5B8D1E962871 /* StockModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87845910B35E4526D0791C3 /* StockModuleView.swift */; };
 		17A93398548EE9C3C269FE6C /* Supplier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08CA999760579F30CAF90FE /* Supplier.swift */; };
 		19CDC899A821E40F6986DA13 /* DemoSeederTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59F07DCAF9FE3C083EB266C1 /* DemoSeederTests.swift */; };
@@ -25,6 +26,7 @@
 		5704AE0D5B2A0E90D3364162 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 78B47C1614A280F9987910EF /* GRDB */; };
 		59AE0A3B9D501D89145D8F21 /* ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03101DBDBECE85F771C122DE /* ExportTests.swift */; };
 		5EF02A5DAFBCB86C3F3C5CA6 /* PaymentsModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 411AAEF0217D9D9928EA46F9 /* PaymentsModuleView.swift */; };
+		683D82E2A34B60E9FDA1FB74 /* InvoiceNumber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E7CE6DAE8601F0EA686CB9 /* InvoiceNumber.swift */; };
 		6C92CE32F0F5F77ABB3035D0 /* DocumentExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A737891A0BB4460D39FBA2 /* DocumentExport.swift */; };
 		70C2201C0F41758F98ABBC76 /* VehiclesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A955241AA4F3E8C6CE95804A /* VehiclesView.swift */; };
 		735B53D84CA1834E604B9F3D /* ProductionModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958EB2124ED3D55F0871A7A5 /* ProductionModuleView.swift */; };
@@ -37,17 +39,23 @@
 		9178EC1FAFD377A9AD36908E /* ProductsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B090AC9AAEBBE49080182CE2 /* ProductsView.swift */; };
 		9D86BD116021C2232E3367B1 /* DemoSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3F2E71DAC879999E4EE22AC /* DemoSeeder.swift */; };
 		B465335E0467CA6731DDF40C /* DSComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DF56584E7AD9601F0B9DA0 /* DSComponents.swift */; };
+		B7445902377C5B9686A00C96 /* BackupRestoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81AA1C9A02E793A6B5ECF7C7 /* BackupRestoreTests.swift */; };
 		BB4E8983477FFC075F7A7451 /* AppSetting.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B776F7F66CC0E5802A2622 /* AppSetting.swift */; };
 		BBC51D749D86F2E13AE3190D /* Product.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91050C02DC6A9EEAAAAB3EE /* Product.swift */; };
 		BC6E66E4BC4B27700196E669 /* SalesInvoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075B31CEA10E0B5766779194 /* SalesInvoice.swift */; };
 		BD40227EA13A24FEACFFF258 /* InvoiceDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CD2AD1E86FCFAB58588118 /* InvoiceDocument.swift */; };
+		C164E5C9F7E62F0C93179FCE /* MasterListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 766DA1FCBABDDC81EA3064C7 /* MasterListView.swift */; };
+		C48B975A82A6E3C27C28DF2A /* StockValuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B28F05F1DD8612C9421CE6 /* StockValuation.swift */; };
 		C5087C1428F00E41D43D7492 /* FormattingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F8F9EEB280CCC7AD78C23CB /* FormattingTests.swift */; };
 		C6D3935C843A64EFEF51A6FB /* Migrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 328BE5036E7FFE034843660C /* Migrations.swift */; };
 		CC189FF278B7837390F97F52 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C60EDDBDABC07D219A33314 /* Assets.xcassets */; };
 		CFFB94F298756286D580A44C /* SalesModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E9BA1DF1FF4D4842BBCAE1 /* SalesModuleView.swift */; };
 		D1A5B3375642CC4B53F8A9E3 /* Payment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 336A2F342353DCBC86A6D0AF /* Payment.swift */; };
+		D609359D9C99B2481216F47F /* InvoiceCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAD1E2A1EA331EB0862AF8EE /* InvoiceCalculatorTests.swift */; };
 		D9D702B3BF3D5DA584ABE4FF /* ProductionBatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5446EB37069BAC486F8CF6B /* ProductionBatch.swift */; };
+		DDBD0C7215EC09EFDDA0FBD7 /* ReceivablesCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E68A94BA2EB4682A4F03D9E /* ReceivablesCalculator.swift */; };
 		F567277B4724C60D1F1E0EF4 /* Vehicle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E522A6E5DCF627B7017ACA8 /* Vehicle.swift */; };
+		F72CD94525CE9DD4D3E117C8 /* BackupRestore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C40271D740A5D80BF21DDAF /* BackupRestore.swift */; };
 		F9FEF75AE89FCC488BEDC6D0 /* Purchase.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBE42DB9A535AB55AE874732 /* Purchase.swift */; };
 		FB9A24A8BDCD282B6AA9EE54 /* Customer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 697A2F6D5CDEE8FE733B1705 /* Customer.swift */; };
 		FCF61732834133C01CD34610 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326CF5A148D2C45FA6953870 /* AppState.swift */; };
@@ -65,10 +73,12 @@
 
 /* Begin PBXFileReference section */
 		03101DBDBECE85F771C122DE /* ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportTests.swift; sourceTree = "<group>"; };
+		03A2E2953B7CBCD8A7FB60E0 /* InvoiceCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceCalculator.swift; sourceTree = "<group>"; };
 		06A36E2AE2DA07E4C03A920C /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		075B31CEA10E0B5766779194 /* SalesInvoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SalesInvoice.swift; sourceTree = "<group>"; };
 		07CF6FB61A14465F1CC349A6 /* PaashERPApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaashERPApp.swift; sourceTree = "<group>"; };
 		11BF66A698E5D50B8AA13717 /* SuppliersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuppliersView.swift; sourceTree = "<group>"; };
+		2C40271D740A5D80BF21DDAF /* BackupRestore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRestore.swift; sourceTree = "<group>"; };
 		326CF5A148D2C45FA6953870 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		328BE5036E7FFE034843660C /* Migrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Migrations.swift; sourceTree = "<group>"; };
 		336A2F342353DCBC86A6D0AF /* Payment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Payment.swift; sourceTree = "<group>"; };
@@ -78,6 +88,8 @@
 		411AAEF0217D9D9928EA46F9 /* PaymentsModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentsModuleView.swift; sourceTree = "<group>"; };
 		45EC245860D0C4C4BFA96CA3 /* MasterDeletion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasterDeletion.swift; sourceTree = "<group>"; };
 		4849DFD8A74CA872AF6C54D4 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
+		48B28F05F1DD8612C9421CE6 /* StockValuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockValuation.swift; sourceTree = "<group>"; };
+		56E7CE6DAE8601F0EA686CB9 /* InvoiceNumber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceNumber.swift; sourceTree = "<group>"; };
 		585DAFDC47C7B8464A017860 /* PurchasesModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchasesModuleView.swift; sourceTree = "<group>"; };
 		59F07DCAF9FE3C083EB266C1 /* DemoSeederTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoSeederTests.swift; sourceTree = "<group>"; };
 		6612C7F96EC60B5129A9777E /* StockGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockGate.swift; sourceTree = "<group>"; };
@@ -85,12 +97,15 @@
 		6C60EDDBDABC07D219A33314 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6C9AF6F4C75D8B944CAD7CB4 /* DatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseTests.swift; sourceTree = "<group>"; };
 		71DF56584E7AD9601F0B9DA0 /* DSComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSComponents.swift; sourceTree = "<group>"; };
+		766DA1FCBABDDC81EA3064C7 /* MasterListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasterListView.swift; sourceTree = "<group>"; };
 		7E522A6E5DCF627B7017ACA8 /* Vehicle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vehicle.swift; sourceTree = "<group>"; };
 		7F8F9EEB280CCC7AD78C23CB /* FormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormattingTests.swift; sourceTree = "<group>"; };
 		8140EA4E22395BC45BD71CA9 /* StockMovement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockMovement.swift; sourceTree = "<group>"; };
+		81AA1C9A02E793A6B5ECF7C7 /* BackupRestoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRestoreTests.swift; sourceTree = "<group>"; };
 		85BD00BF9A9639D9435220E8 /* BusinessWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessWorkflowTests.swift; sourceTree = "<group>"; };
 		8C33A89142046528D9092DA8 /* BackupDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupDocument.swift; sourceTree = "<group>"; };
 		8C6459BBC222717723E4BDF8 /* DSTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSTokens.swift; sourceTree = "<group>"; };
+		8E68A94BA2EB4682A4F03D9E /* ReceivablesCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceivablesCalculator.swift; sourceTree = "<group>"; };
 		958EB2124ED3D55F0871A7A5 /* ProductionModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionModuleView.swift; sourceTree = "<group>"; };
 		9776944B122DB178999DF581 /* CustomersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomersView.swift; sourceTree = "<group>"; };
 		9E353A344F7F4BEA12784CCC /* PaashERPTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PaashERPTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -99,6 +114,7 @@
 		AACD973D873B6FBD107B4148 /* Environment+AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Environment+AppDatabase.swift"; sourceTree = "<group>"; };
 		B090AC9AAEBBE49080182CE2 /* ProductsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductsView.swift; sourceTree = "<group>"; };
 		B3F2E71DAC879999E4EE22AC /* DemoSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoSeeder.swift; sourceTree = "<group>"; };
+		BAD1E2A1EA331EB0862AF8EE /* InvoiceCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceCalculatorTests.swift; sourceTree = "<group>"; };
 		C08395BAE959BA9DB1CB5DF1 /* PaashERP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PaashERP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C08CA999760579F30CAF90FE /* Supplier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Supplier.swift; sourceTree = "<group>"; };
 		C91050C02DC6A9EEAAAAB3EE /* Product.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Product.swift; sourceTree = "<group>"; };
@@ -127,6 +143,7 @@
 			isa = PBXGroup;
 			children = (
 				9776944B122DB178999DF581 /* CustomersView.swift */,
+				766DA1FCBABDDC81EA3064C7 /* MasterListView.swift */,
 				B090AC9AAEBBE49080182CE2 /* ProductsView.swift */,
 				11BF66A698E5D50B8AA13717 /* SuppliersView.swift */,
 				A955241AA4F3E8C6CE95804A /* VehiclesView.swift */,
@@ -157,6 +174,7 @@
 				33E3E1474961713078E66203 /* App */,
 				CE70E62F68BBF147691E7EB0 /* Database */,
 				7C8B7A954B6F8998ECB0E192 /* DesignSystem */,
+				778A67B3A30C16E84C224F59 /* Domain */,
 				885E49A949843FB4CA615D5E /* Models */,
 				5BBB32C7C96EBCE14257F7EC /* Support */,
 				ED2166EA3ACD7C4448584764 /* Views */,
@@ -187,6 +205,7 @@
 			isa = PBXGroup;
 			children = (
 				8C33A89142046528D9092DA8 /* BackupDocument.swift */,
+				2C40271D740A5D80BF21DDAF /* BackupRestore.swift */,
 				E2A737891A0BB4460D39FBA2 /* DocumentExport.swift */,
 				AACD973D873B6FBD107B4148 /* Environment+AppDatabase.swift */,
 				4849DFD8A74CA872AF6C54D4 /* Formatting.swift */,
@@ -203,6 +222,17 @@
 				E8E9BA1DF1FF4D4842BBCAE1 /* SalesModuleView.swift */,
 			);
 			path = Sales;
+			sourceTree = "<group>";
+		};
+		778A67B3A30C16E84C224F59 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				03A2E2953B7CBCD8A7FB60E0 /* InvoiceCalculator.swift */,
+				56E7CE6DAE8601F0EA686CB9 /* InvoiceNumber.swift */,
+				8E68A94BA2EB4682A4F03D9E /* ReceivablesCalculator.swift */,
+				48B28F05F1DD8612C9421CE6 /* StockValuation.swift */,
+			);
+			path = Domain;
 			sourceTree = "<group>";
 		};
 		7C8B7A954B6F8998ECB0E192 /* DesignSystem */ = {
@@ -259,11 +289,13 @@
 		A7647C51C02D22457B7D1408 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				81AA1C9A02E793A6B5ECF7C7 /* BackupRestoreTests.swift */,
 				85BD00BF9A9639D9435220E8 /* BusinessWorkflowTests.swift */,
 				6C9AF6F4C75D8B944CAD7CB4 /* DatabaseTests.swift */,
 				59F07DCAF9FE3C083EB266C1 /* DemoSeederTests.swift */,
 				03101DBDBECE85F771C122DE /* ExportTests.swift */,
 				7F8F9EEB280CCC7AD78C23CB /* FormattingTests.swift */,
+				BAD1E2A1EA331EB0862AF8EE /* InvoiceCalculatorTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -400,6 +432,7 @@
 				BB4E8983477FFC075F7A7451 /* AppSetting.swift in Sources */,
 				FCF61732834133C01CD34610 /* AppState.swift in Sources */,
 				00F7D30C23C0AB30181EC6D9 /* BackupDocument.swift in Sources */,
+				F72CD94525CE9DD4D3E117C8 /* BackupRestore.swift in Sources */,
 				FB9A24A8BDCD282B6AA9EE54 /* Customer.swift in Sources */,
 				551AFEE2A046153508328FA2 /* CustomersView.swift in Sources */,
 				B465335E0467CA6731DDF40C /* DSComponents.swift in Sources */,
@@ -408,8 +441,11 @@
 				6C92CE32F0F5F77ABB3035D0 /* DocumentExport.swift in Sources */,
 				91666F495C7D912702B665D4 /* Environment+AppDatabase.swift in Sources */,
 				1BD605D08004D319387D6F0D /* Formatting.swift in Sources */,
+				0E7386E8006CB3FAE1630131 /* InvoiceCalculator.swift in Sources */,
 				BD40227EA13A24FEACFFF258 /* InvoiceDocument.swift in Sources */,
+				683D82E2A34B60E9FDA1FB74 /* InvoiceNumber.swift in Sources */,
 				7C1C0B058CE4B7FD2F1F9CF8 /* MasterDeletion.swift in Sources */,
+				C164E5C9F7E62F0C93179FCE /* MasterListView.swift in Sources */,
 				C6D3935C843A64EFEF51A6FB /* Migrations.swift in Sources */,
 				0AE94FF123477FB5BF17DE9A /* OverviewView.swift in Sources */,
 				3BB906887C22BF0A2D9BD7AD /* PaashERPApp.swift in Sources */,
@@ -421,6 +457,7 @@
 				9178EC1FAFD377A9AD36908E /* ProductsView.swift in Sources */,
 				F9FEF75AE89FCC488BEDC6D0 /* Purchase.swift in Sources */,
 				20D0FE119F4E7E54E6375329 /* PurchasesModuleView.swift in Sources */,
+				DDBD0C7215EC09EFDDA0FBD7 /* ReceivablesCalculator.swift in Sources */,
 				35ACC1CBB6D12AC92F7BCAE9 /* ReportsModuleView.swift in Sources */,
 				560D5C3530F6CA0A6A584DC6 /* RootView.swift in Sources */,
 				BC6E66E4BC4B27700196E669 /* SalesInvoice.swift in Sources */,
@@ -429,6 +466,7 @@
 				84BDAFD9A50ADF844D3F362D /* StockGate.swift in Sources */,
 				1741FC3144DE5B8D1E962871 /* StockModuleView.swift in Sources */,
 				31DEBEDB87E307331B637E4A /* StockMovement.swift in Sources */,
+				C48B975A82A6E3C27C28DF2A /* StockValuation.swift in Sources */,
 				17A93398548EE9C3C269FE6C /* Supplier.swift in Sources */,
 				8E49103F330339A3A223536A /* SuppliersView.swift in Sources */,
 				F567277B4724C60D1F1E0EF4 /* Vehicle.swift in Sources */,
@@ -440,11 +478,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B7445902377C5B9686A00C96 /* BackupRestoreTests.swift in Sources */,
 				22F3C1BD695DF185DAA79C8A /* BusinessWorkflowTests.swift in Sources */,
 				2411CC43AB41D8ADA9D006FF /* DatabaseTests.swift in Sources */,
 				19CDC899A821E40F6986DA13 /* DemoSeederTests.swift in Sources */,
 				59AE0A3B9D501D89145D8F21 /* ExportTests.swift in Sources */,
 				C5087C1428F00E41D43D7492 /* FormattingTests.swift in Sources */,
+				D609359D9C99B2481216F47F /* InvoiceCalculatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

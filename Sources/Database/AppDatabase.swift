@@ -39,6 +39,20 @@ struct AppDatabase: Sendable {
 
     var reader: any DatabaseReader { dbQueue }
     func writer() -> any DatabaseWriter { dbQueue }
+
+    /// Runs a read off the main actor and returns a `Sendable` result.
+    func readAsync<Result: Sendable>(
+        _ value: @Sendable (Database) throws -> Result
+    ) async throws -> Result {
+        try await dbQueue.read(value)
+    }
+
+    /// Runs a write off the main actor and returns a `Sendable` result.
+    func writeAsync<Result: Sendable>(
+        _ updates: @Sendable (Database) throws -> Result
+    ) async throws -> Result {
+        try await dbQueue.write(updates)
+    }
 }
 
 enum AppDatabaseError: Error {

@@ -27,58 +27,60 @@ struct StockModuleView: View {
     @State private var editor: StockAdjustContext?
     @State private var confirmDelete = false
     @State private var errorMessage: String?
+    @State private var searchText = ""
+    @State private var loaded = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DS.Spacing.xl) {
-                PageHeader(
-                    title: "Stock",
-                    subtitle: "Live stock on hand per product and the full movement ledger."
-                )
+        VStack(alignment: .leading, spacing: DS.Spacing.xl) {
+            PageHeader(
+                title: "Stock",
+                subtitle: "Live stock on hand per product and the full movement ledger."
+            )
 
-                KPIValueCard(
-                    title: "Total stock value",
-                    value: Format.inr(totalValuePaise),
-                    footnote: "\(Format.tonnesLabel(totalKg)) on hand across \(balances.count) products",
-                    icon: "shippingbox.fill",
-                    tint: DS.Color.accent
-                )
+            KPIValueCard(
+                title: "Total stock value",
+                value: Format.inr(totalValuePaise),
+                footnote: "\(Format.tonnesLabel(totalKg)) on hand across \(balances.count) products",
+                icon: "shippingbox.fill",
+                tint: DS.Color.accent
+            )
 
-                if !topValuation.isEmpty {
-                    CardContainer {
-                        VStack(alignment: .leading, spacing: DS.Spacing.m) {
-                            SectionHeading(title: "Valuation by product", count: topValuation.count)
-                            Chart(topValuation) { row in
-                                BarMark(
-                                    x: .value("Value", Double(row.valuePaise) / 100),
-                                    y: .value("Product", row.name)
-                                )
-                                .foregroundStyle(DS.Color.accent.opacity(0.85))
-                                .cornerRadius(3)
-                            }
-                            .chartXAxis {
-                                AxisMarks { value in
-                                    AxisGridLine()
-                                    if let rupees = value.as(Double.self) {
-                                        AxisValueLabel {
-                                            Text(Format.inrCompact(Int64(rupees * 100)))
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
+            if !topValuation.isEmpty {
+                CardContainer {
+                    VStack(alignment: .leading, spacing: DS.Spacing.m) {
+                        SectionHeading(title: "Valuation by product", count: topValuation.count)
+                        Chart(topValuation) { row in
+                            BarMark(
+                                x: .value("Value", Double(row.valuePaise) / 100),
+                                y: .value("Product", row.name)
+                            )
+                            .foregroundStyle(DS.Color.accent.opacity(0.85))
+                            .cornerRadius(3)
+                        }
+                        .chartXAxis {
+                            AxisMarks { value in
+                                AxisGridLine()
+                                if let rupees = value.as(Double.self) {
+                                    AxisValueLabel {
+                                        Text(Format.inrCompact(Int64(rupees * 100)))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
                             }
-                            .chartYAxis {
-                                AxisMarks { _ in
-                                    AxisValueLabel()
-                                        .font(DS.Font.footnote)
-                                }
-                            }
-                            .frame(height: 200)
                         }
+                        .chartYAxis {
+                            AxisMarks { _ in
+                                AxisValueLabel()
+                                    .font(DS.Font.footnote)
+                            }
+                        }
+                        .frame(height: 200)
                     }
                 }
+            }
 
+            VStack(alignment: .leading, spacing: DS.Spacing.s) {
                 SectionHeading(title: "Stock on hand", count: balances.count)
                 if balances.isEmpty {
                     InlineEmptyState(
@@ -89,24 +91,35 @@ struct StockModuleView: View {
                 } else {
                     balancesTable
                 }
+            }
 
-                SectionHeading(title: "Recent movements", count: movements.count)
+            VStack(alignment: .leading, spacing: DS.Spacing.s) {
+                SectionHeading(title: "Recent movements", count: filteredMovements.count)
                 if movements.isEmpty {
                     InlineEmptyState(
                         icon: "arrow.left.arrow.right",
                         title: "No movements yet",
                         message: "Stock movements appear here once production, sales or adjustments are recorded."
                     )
+                } else if filteredMovements.isEmpty {
+                    InlineEmptyState(
+                        icon: "magnifyingglass",
+                        title: "No matching movements",
+                        message: "Nothing matches “\(searchText)”. Try product, type or remarks."
+                    )
                 } else {
                     movementsTable
+                        .frame(maxHeight: .infinity)
                 }
             }
-            .padding(DS.Spacing.xl)
-            .frame(maxWidth: 1280)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .padding(DS.Spacing.xl)
+        .frame(maxWidth: 1280)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Stock")
+        .loadingOverlay(!loaded)
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search product, type or remarks")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -129,13 +142,13 @@ struct StockModuleView: View {
             isPresented: $confirmDelete,
             titleVisibility: .visible
         ) {
-            Button("Delete Movement", role: .destructive) { deleteSelected() }
+            Button("Delete Movement", role: .destructive) { Task { await deleteSelected() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes the movement from the stock ledger. Movements linked to a production batch or sales invoice cannot be deleted here.")
         }
         .sheet(item: $editor) { context in
-            StockAdjustView(context: context) { reload() }
+            StockAdjustView(context: context) { Task { await reload() } }
         }
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
@@ -145,7 +158,7 @@ struct StockModuleView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
+        .task { await reload(); loaded = true }
     }
 
     @ViewBuilder
@@ -221,8 +234,14 @@ struct StockModuleView: View {
                     .lineLimit(1)
             }
         } rows: {
-            ForEach(movements) { (row: StockMovementRow) in
+            ForEach(filteredMovements) { (row: StockMovementRow) in
                 TableRow(row)
+                    .contextMenu {
+                        Button("Delete movement", role: .destructive) {
+                            movementSelection = row.id
+                            confirmDelete = true
+                        }
+                    }
             }
         }
         .alternatingRowBackgrounds()
@@ -245,7 +264,17 @@ struct StockModuleView: View {
         )
     }
 
-    private func deleteSelected() {
+    private var filteredMovements: [StockMovementRow] {
+        guard !searchText.isEmpty else { return movements }
+        let query = searchText.trimmingCharacters(in: .whitespaces).localizedLowercase
+        return movements.filter { row in
+            row.productName.localizedLowercase.contains(query)
+                || row.movement.type.label.localizedLowercase.contains(query)
+                || (row.movement.remarks ?? "").localizedLowercase.contains(query)
+        }
+    }
+
+    private func deleteSelected() async {
         guard let selectedID = movementSelection,
               let row = movements.first(where: { $0.id == selectedID }) else { return }
         guard row.movement.refId == nil else {
@@ -253,12 +282,24 @@ struct StockModuleView: View {
             movementSelection = nil
             return
         }
+        let movementCopy = row.movement
+        let balanceRows = balances
         do {
-            try db.dbQueue.write { db in
-                try StockMovement.deleteOne(db, key: row.movement.id ?? 0)
+            try await db.writeAsync { db in
+                if movementCopy.qtyKg > 0 {
+                    // Deleting a credit (opening/adjustment-in) removes stock;
+                    // block if what remains on hand can't absorb it.
+                    try StockGate.requireForRemoval(
+                        db: db,
+                        removingKg: movementCopy.qtyKg,
+                        productID: movementCopy.productId,
+                        productName: { pid in balanceRows.first(where: { $0.productId == pid })?.name }
+                    )
+                }
+                try StockMovement.deleteOne(db, key: movementCopy.id ?? 0)
             }
             movementSelection = nil
-            reload()
+            await reload()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -277,9 +318,9 @@ struct StockModuleView: View {
         }
     }
 
-    private func reload() {
+    private func reload() async {
         do {
-            let loaded = try db.dbQueue.read { db -> ([StockBalanceRow], [StockMovementRow]) in
+            let loaded = try await db.readAsync { db -> ([StockBalanceRow], [StockMovementRow]) in
                 struct BalanceRow: Decodable, FetchableRecord {
                     var productId: Int64
                     var qtyKg: Int64
@@ -301,7 +342,7 @@ struct StockModuleView: View {
                 let stockRows = products.map { product in
                     let qty = balanceByProduct[product.id ?? 0] ?? 0
                     let rate = latest[product.id ?? 0]
-                    let value = rate.map { Int64((Double(qty) * Double($0) / 1000).rounded()) } ?? 0
+                    let value = rate.map { StockValuation.value(ratePaisePerTonne: $0, qtyKg: qty) } ?? 0
                     return StockBalanceRow(
                         productId: product.id ?? 0,
                         name: product.name,
@@ -424,20 +465,20 @@ struct StockAdjustView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { save() }
+                Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 480)
+        .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
-        .task { loadProducts() }
+        .task { await loadProducts() }
     }
 
-    private func loadProducts() {
+    private func loadProducts() async {
         do {
-            products = try db.dbQueue.read { db in
+            products = try await db.readAsync { db in
                 try Product.filter(Column("isActive") == true).order(Column("sortOrder"), Column("name")).fetchAll(db)
             }
         } catch {
@@ -445,16 +486,29 @@ struct StockAdjustView: View {
         }
     }
 
-    private func save() {
+    private func save() async {
         guard let productID = productId else { return }
+        let formType = type
+        let formQtyKg = qtyKg
+        let formSignedKg = signedKg
+        let formRemarks = trimmedNil(remarks)
+        let productRows = products
         do {
-            try db.dbQueue.write { db in
+            try await db.writeAsync { db in
+                if formType == .wastage || formType == .adjustmentOut {
+                    try StockGate.requireForRemoval(
+                        db: db,
+                        removingKg: formQtyKg,
+                        productID: productID,
+                        productName: { pid in productRows.first(where: { $0.id == pid })?.name }
+                    )
+                }
                 var movement = StockMovement(
                     productId: productID,
                     date: .now,
-                    type: type,
-                    qtyKg: signedKg,
-                    remarks: trimmedNil(remarks)
+                    type: formType,
+                    qtyKg: formSignedKg,
+                    remarks: formRemarks
                 )
                 try movement.insert(db)
             }

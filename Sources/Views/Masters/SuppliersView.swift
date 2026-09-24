@@ -9,67 +9,37 @@ struct SupplierRowModel: Identifiable, Equatable {
 struct SuppliersView: View {
     @Environment(\.appDatabase) private var db
     @State private var rows: [SupplierRowModel] = []
-    @State private var search = ""
-    @State private var selection: Int64?
-    @State private var editor: SupplierEditorContext?
-    @State private var confirmDelete = false
     @State private var errorMessage: String?
 
-    private var filteredRows: [SupplierRowModel] {
-        guard !search.isEmpty else { return rows }
-        return rows.filter {
-            $0.supplier.name.localizedCaseInsensitiveContains(search)
-                || ($0.supplier.city ?? "").localizedCaseInsensitiveContains(search)
-        }
-    }
-
     var body: some View {
-        Group {
-            if filteredRows.isEmpty {
-                EmptyStateView(
-                    icon: "truck.box",
-                    title: search.isEmpty ? "No suppliers yet" : "No matches for “\(search)”",
-                    message: "Diesel vendors, spare-part dealers, blasting contractors and labour providers."
-                )
-            } else {
-                table
-            }
-        }
-        .searchable(text: $search, prompt: "Search suppliers")
-        .navigationTitle("Suppliers")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    editor = SupplierEditorContext(supplier: nil)
-                } label: {
-                    Label("Add Supplier", systemImage: "plus")
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                Button {
-                    if let row = selectedRow { startEditing(row) }
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
-                .keyboardShortcut("e", modifiers: .command)
-                .disabled(selection == nil)
-                Button(role: .destructive) {
-                    confirmDelete = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .keyboardShortcut(.delete, modifiers: [])
-                .disabled(selection == nil)
-            }
-        }
-        .sheet(item: $editor) { context in
-            SupplierEditorView(context: context) { reload() }
-        }
-        .destructiveConfirmation(
-            title: "Delete supplier?",
-            message: "Unused suppliers are removed. Those with purchase records are deactivated instead — existing purchases keep their supplier snapshot.",
-            destructiveLabel: "Delete",
-            isPresented: $confirmDelete
-        ) { deleteSelected() }
+        MasterListView(
+            rows: rows,
+            navigationTitle: "Suppliers",
+            searchPrompt: "Search suppliers",
+            addLabel: "Add Supplier",
+            emptyIcon: "truck.box",
+            emptyTitle: "No suppliers yet",
+            emptyMessage: "Diesel vendors, spare-part dealers, blasting contractors and labour providers.",
+            deleteConfirmationTitle: "Delete supplier?",
+            deleteConfirmationMessage: "Unused suppliers are removed. Those with purchase records are deactivated instead — existing purchases keep their supplier snapshot.",
+            filter: { row, query in
+                row.supplier.name.localizedCaseInsensitiveContains(query)
+                    || (row.supplier.city ?? "").localizedCaseInsensitiveContains(query)
+            },
+            deactivationMessage: { row in
+                "“\(row.supplier.name)” has purchase records, so it was deactivated instead of deleted."
+            },
+            makeNewContext: { SupplierEditorContext(supplier: nil) },
+            makeEditContext: { SupplierEditorContext(supplier: $0.supplier) },
+            editorSheet: { context, onSave in
+                SupplierEditorView(context: context, onSave: onSave)
+            },
+            deleteEntity: { database, id in
+                try MasterDeletion.delete(Supplier.self, id: id, db: database)
+            },
+            table: supplierTable,
+            onReload: { Task { await reload() } }
+        )
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -78,12 +48,15 @@ struct SuppliersView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
     }
 
-    @ViewBuilder
-    private var table: some View {
-        Table(of: SupplierRowModel.self, selection: $selection) {
+    private func supplierTable(
+        _ selection: Binding<Int64?>,
+        _ rows: [SupplierRowModel],
+        _ startEditing: @escaping (SupplierRowModel) -> Void,
+        _ deleteRow: @escaping (SupplierRowModel) -> Void
+    ) -> some View {
+        Table(of: SupplierRowModel.self, selection: selection) {
             TableColumn("Supplier") { row in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.supplier.name)
@@ -114,59 +87,26 @@ struct SuppliersView: View {
             }
             .width(min: 80, ideal: 90)
         } rows: {
-            ForEach(filteredRows) { (row: SupplierRowModel) in
+            ForEach(rows) { (row: SupplierRowModel) in
                 TableRow(row)
-                    .contextMenu { rowContextMenu(row) }
+                    .contextMenu {
+                        Button("Edit") { startEditing(row) }
+                        Button("Delete", role: .destructive) { deleteRow(row) }
+                    }
             }
         }
         .alternatingRowBackgrounds()
         .contextMenu(forSelectionType: Int64.self) { selections in
             if let id = selections.first, let row = rows.first(where: { $0.id == id }) {
                 Button("Edit") { startEditing(row) }
-            }
-            Button("Delete", role: .destructive) { confirmDelete = true }
-        }
-    }
-
-    private var selectedRow: SupplierRowModel? {
-        guard let selection else { return nil }
-        return rows.first { $0.id == selection }
-    }
-
-    private func startEditing(_ row: SupplierRowModel) {
-        editor = SupplierEditorContext(supplier: row.supplier)
-    }
-
-    private func rowContextMenu(_ row: SupplierRowModel) -> some View {
-        Group {
-            Button("Edit") { startEditing(row) }
-            Button("Delete", role: .destructive) {
-                selection = row.id
-                confirmDelete = true
+                Button("Delete", role: .destructive) { deleteRow(row) }
             }
         }
     }
 
-    private func deleteSelected() {
-        guard let id = selection,
-              let row = rows.first(where: { $0.id == id }),
-              let supplierID = row.supplier.id else { return }
+    private func reload() async {
         do {
-            let outcome = try db.dbQueue.write { db in
-                try MasterDeletion.delete(Supplier.self, id: supplierID, db: db)
-            }
-            if outcome == .deactivated {
-                errorMessage = "“\(row.supplier.name)” has purchase records, so it was deactivated instead of deleted."
-            }
-            reload()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reload() {
-        do {
-            rows = try db.dbQueue.read { db in
+            rows = try await db.readAsync { db in
                 try Supplier.order(Column("name")).fetchAll(db).map(SupplierRowModel.init)
             }
         } catch {
@@ -243,26 +183,33 @@ struct SupplierEditorView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { save() }
+                Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 460)
+        .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
     }
 
-    private func save() {
+    private func save() async {
+        let formName = name.trimmingCharacters(in: .whitespaces)
+        let formGstin = trimmedOrNil(gstin)
+        let formPhone = trimmedOrNil(phone)
+        let formAddress = trimmedOrNil(address)
+        let formCity = trimmedOrNil(city)
+        let formIsActive = isActive
+        let existingSupplier = context.supplier
         do {
-            try db.dbQueue.write { db in
-                var supplier = context.supplier ?? Supplier(name: "")
-                supplier.name = name.trimmingCharacters(in: .whitespaces)
-                supplier.gstin = trimmedOrNil(gstin)
-                supplier.phone = trimmedOrNil(phone)
-                supplier.address = trimmedOrNil(address)
-                supplier.city = trimmedOrNil(city)
-                supplier.isActive = isActive
+            try await db.writeAsync { db in
+                var supplier = existingSupplier ?? Supplier(name: "")
+                supplier.name = formName
+                supplier.gstin = formGstin
+                supplier.phone = formPhone
+                supplier.address = formAddress
+                supplier.city = formCity
+                supplier.isActive = formIsActive
                 if supplier.id == nil {
                     supplier.createdAt = .now
                 }

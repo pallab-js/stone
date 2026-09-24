@@ -45,7 +45,7 @@ enum SidebarDestination: Hashable, Identifiable {
         case .products: "cube.box"
         case .customers: "person.2"
         case .suppliers: "truck.box"
-        case .vehicles: "truck.box.fill"
+        case .vehicles: "truck.pickup.side"
         case .settings: "gearshape"
         }
     }
@@ -59,20 +59,27 @@ enum SidebarDestination: Hashable, Identifiable {
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
-    @State private var selection: SidebarDestination? = .overview
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 300)
-        } detail: {
-            detail
+        @Bindable var appState = appState
+        if let launchError = appState.launchError {
+            // The database failed to open and the app is on a throwaway
+            // in-memory copy: block the UI rather than silently lose work.
+            LaunchErrorView(message: launchError) {
+                appState.retryOpen()
+            }
+        } else {
+            NavigationSplitView {
+                sidebar($appState.selectedDestination)
+                    .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 300)
+            } detail: {
+                detail
+            }
         }
-        .navigationTitle(selection?.title ?? "PaashERP")
     }
 
-    private var sidebar: some View {
-        List(selection: $selection) {
+    private func sidebar(_ selection: Binding<SidebarDestination?>) -> some View {
+        List(selection: selection) {
             brand
             sidebarSection("Overview", items: [.overview])
             sidebarSection("Operations", items: SidebarDestination.operations)
@@ -122,7 +129,7 @@ struct RootView: View {
 
     @ViewBuilder
     private var detail: some View {
-        switch selection {
+        switch appState.selectedDestination {
         case .overview:
             OverviewView()
         case .production:
@@ -167,5 +174,37 @@ private struct SidebarRow: View {
         }
         .tag(item)
         .padding(.vertical, 2)
+    }
+}
+
+/// Shown when the database could not be opened at launch. The app must not be
+/// used in this state, since everything would be written to a temporary
+/// in-memory database and lost on quit.
+private struct LaunchErrorView: View {
+    let message: String
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: DS.Spacing.lg) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(DS.Color.danger)
+            Text("Your data could not be opened")
+                .font(DS.Font.sectionTitle)
+            Text("PaashERP is running on a temporary in-memory copy, so nothing you do now will be saved. Quit immediately if you need to avoid losing entries, then check the message below before trying again.")
+                .font(DS.Font.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Text(message)
+                .font(DS.Font.footnote)
+                .foregroundStyle(DS.Color.danger)
+                .textSelection(.enabled)
+                .frame(maxWidth: 460)
+            Button("Try opening again", action: retry)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(DS.Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DS.Color.contentBackground)
     }
 }

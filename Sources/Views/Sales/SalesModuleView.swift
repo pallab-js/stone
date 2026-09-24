@@ -12,25 +12,9 @@ struct SalesInvoiceRow: Identifiable, Equatable {
     var duePaise: Int64 { max(0, invoice.grandTotalPaise - paidPaise) }
 }
 
-enum InvoiceNumber {
-    static func next(db: Database) throws -> String {
-        let year = Calendar.autoupdatingCurrent.component(.year, from: .now)
-        let prefix = "INV-\(year)-"
-        // Take the MAX existing number for this year so deletion never makes
-        // the next number collide with an existing invoice.
-        if let maxNo = try String.fetchOne(
-            db,
-            sql: "SELECT MAX(invoiceNo) FROM salesInvoices WHERE invoiceNo LIKE ?",
-            arguments: [prefix + "%"]
-        ), let last = maxNo.split(separator: "-").last, let number = Int(last) {
-            return String(format: "%@%04d", prefix, number + 1)
-        }
-        return String(format: "%@%04d", prefix, 1)
-    }
-}
-
 struct SalesModuleView: View {
     @Environment(\.appDatabase) private var db
+    @Environment(AppState.self) private var appState
     @State private var rows: [SalesInvoiceRow] = []
     @State private var selection: Int64?
     @State private var editor: SalesEditorContext?
@@ -39,6 +23,7 @@ struct SalesModuleView: View {
     @State private var previewData: InvoiceDocumentData?
     @State private var showPreview = false
     @State private var searchText = ""
+    @State private var loaded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xl) {
@@ -66,9 +51,11 @@ struct SalesModuleView: View {
             }
         }
         .padding(DS.Spacing.xl)
+        .frame(maxWidth: 1280)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Sales & Invoices")
+        .loadingOverlay(!loaded)
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search invoice no, customer or vehicle")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -101,7 +88,7 @@ struct SalesModuleView: View {
             }
         }
         .sheet(item: $editor) { context in
-            SalesEditorView(context: context) { reload() }
+            SalesEditorView(context: context) { Task { await reload() } }
         }
         .sheet(isPresented: $showPreview) {
             if let previewData {
@@ -113,7 +100,7 @@ struct SalesModuleView: View {
             message: "It will be marked cancelled, excluded from all sales and receivable figures, and its quantity returned to stock. Invoices with recorded payments cannot be cancelled.",
             destructiveLabel: "Cancel Invoice",
             isPresented: $confirmDelete
-        ) { cancelSelected() }
+        ) { Task { await cancelSelected() } }
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -122,7 +109,7 @@ struct SalesModuleView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
+        .task { await reload(); loaded = true }
     }
 
     private var filteredRows: [SalesInvoiceRow] {
@@ -216,13 +203,15 @@ struct SalesModuleView: View {
 
     private func previewInvoice(_ invoice: SalesInvoice) {
         guard let invoiceID = invoice.id else { return }
-        do {
-            previewData = try db.dbQueue.read { db in
-                try InvoiceDocumentLoader.load(db, invoiceID: invoiceID)
+        Task {
+            do {
+                previewData = try await db.readAsync { db in
+                    try InvoiceDocumentLoader.load(db, invoiceID: invoiceID)
+                }
+                showPreview = true
+            } catch {
+                errorMessage = error.localizedDescription
             }
-            showPreview = true
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 
@@ -234,6 +223,17 @@ struct SalesModuleView: View {
         Group {
             if row.invoice.status != .cancelled {
                 Button("Edit") { startEditing(row) }
+                if row.duePaise > 0 {
+                    Button("Record payment…") {
+                        appState.recordPayment(
+                            draft: PaymentDraft(
+                                customerId: row.invoice.customerId,
+                                invoiceId: row.invoice.id,
+                                amountHintPaise: row.duePaise
+                            )
+                        )
+                    }
+                }
                 Button("Cancel Invoice", role: .destructive) {
                     selection = row.id
                     confirmDelete = true
@@ -255,20 +255,20 @@ struct SalesModuleView: View {
         return DS.Color.danger
     }
 
-    private func cancelSelected() {
+    private func cancelSelected() async {
         guard let id = selection,
               let row = rows.first(where: { $0.id == id }),
               let invoiceID = row.invoice.id,
               row.invoice.status != .cancelled else { return }
         do {
-            let canCancel = try db.dbQueue.read { db in
-                try Payment.filter(Column("invoiceId") == invoiceID).fetchCount(db) == 0
+            let paymentCount = try await db.readAsync { db in
+                try Payment.filter(Column("invoiceId") == invoiceID).fetchCount(db)
             }
-            guard canCancel else {
+            guard paymentCount == 0 else {
                 errorMessage = "This invoice has payments recorded against it. Cancel or adjust the payments first."
                 return
             }
-            try db.dbQueue.write { db in
+            try await db.writeAsync { db in
                 var invoice = try SalesInvoice.fetchOne(db, key: invoiceID)
                 invoice?.status = .cancelled
                 if let invoice { try invoice.update(db) }
@@ -277,15 +277,15 @@ struct SalesModuleView: View {
                     .filter(Column("refId") == invoiceID)
                     .deleteAll(db)
             }
-            reload()
+            await reload()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func reload() {
+    private func reload() async {
         do {
-            rows = try db.dbQueue.read { db -> [SalesInvoiceRow] in
+            rows = try await db.readAsync { db -> [SalesInvoiceRow] in
                 let invoices = try SalesInvoice.order(Column("date").desc, Column("id").desc).fetchAll(db)
                 let customers = try Customer.fetchAll(db)
                 let vehicles = try Vehicle.fetchAll(db)
@@ -313,18 +313,12 @@ struct SalesModuleView: View {
                         qtyByInvoice[row.invoiceId] = row.qtyKg
                     }
                 }
-                struct PaidRow: Decodable, FetchableRecord {
-                    var invoiceId: Int64
-                    var amountPaise: Int64
-                }
-                let paidRows = try PaidRow.fetchAll(
-                    db,
-                    sql: "SELECT invoiceId, SUM(amountPaise) AS amountPaise FROM payments WHERE partyType = ? AND invoiceId IS NOT NULL GROUP BY invoiceId",
-                    arguments: [Payment.PartyType.customer.rawValue]
-                )
+                let receivables = try ReceivablesCalculator.snapshot(db: db)
                 var paidByInvoice: [Int64: Int64] = [:]
-                for row in paidRows {
-                    paidByInvoice[row.invoiceId] = row.amountPaise
+                for customer in receivables.byCustomer {
+                    for invoice in customer.invoices {
+                        paidByInvoice[invoice.invoiceId] = invoice.paidPaise
+                    }
                 }
                 return invoices.map { invoice in
                     SalesInvoiceRow(
@@ -366,11 +360,7 @@ struct InvoiceLineDraft: Identifiable {
     }
 
     var amountPaise: Int64 {
-        qtyKg * ratePaisePerTonne / 1000
-    }
-
-    func gstPaise(bps: Int) -> Int64 {
-        amountPaise * Int64(bps) / 10_000
+        InvoiceCalculator.amountPaise(qtyKg: qtyKg, ratePaisePerTonne: ratePaisePerTonne)
     }
 }
 
@@ -379,6 +369,12 @@ struct SalesEditorView: View {
     @Environment(\.dismiss) private var dismiss
     let context: SalesEditorContext
     let onSave: () -> Void
+
+    /// The CGST/SGST vs IGST split this invoice was originally recorded with.
+    /// Non-nil while editing a saved invoice: the recorded tax structure is
+    /// immutable, so a later change to the customer's State in Masters can
+    /// never silently rewrite a dispatched tax invoice's composition.
+    private let pinnedSplitMode: InvoiceCalculator.SplitMode?
 
     @State private var invoiceNo: String
     @State private var date: Date
@@ -395,6 +391,7 @@ struct SalesEditorView: View {
     @State private var products: [Product] = []
     @State private var latestRates: [Int64: Int64] = [:]
     @State private var productById: [Int64: Product] = [:]
+    @State private var outstandingByCustomer: [Int64: Int64] = [:]
     @State private var businessState = ""
     @State private var tareText = ""
     @State private var grossText = ""
@@ -417,6 +414,11 @@ struct SalesEditorView: View {
         _discountText = State(initialValue: String(format: "%.2f", Double(invoice.discountPaise) / 100))
         _remarks = State(initialValue: invoice.remarks ?? "")
         _lines = State(initialValue: [])
+        pinnedSplitMode = InvoiceCalculator.recordedSplitMode(
+            cgstPaise: invoice.cgstPaise,
+            sgstPaise: invoice.sgstPaise,
+            igstPaise: invoice.igstPaise
+        )
     }
 
     var body: some View {
@@ -435,11 +437,22 @@ struct SalesEditorView: View {
                         DatePicker("", selection: $date, displayedComponents: .date)
                             .fixedSize()
                     }
+                    if context.invoice != nil {
+                        Text("Invoice number is locked once the invoice is saved.")
+                            .font(DS.Font.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     Picker("Customer", selection: $customerId) {
                         Text("Select customer").tag(Int64?.none)
                         ForEach(customers) { customer in
                             Text(customer.name).tag(Int64?(customer.id ?? 0))
                         }
+                    }
+                    .onChange(of: customerId) { _, newValue in
+                        guard let id = newValue,
+                              let city = customers.first(where: { $0.id == id })?.city,
+                              placeOfSupply.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                        placeOfSupply = city
                     }
                     Picker("Vehicle", selection: $vehicleId) {
                         Text("—").tag(Int64?.none)
@@ -450,6 +463,12 @@ struct SalesEditorView: View {
                     TextField("Place of supply", text: $placeOfSupply)
                     TextField("State", text: $state)
                         .disabled(!state.isEmpty && context.invoice != nil)
+                    if !state.isEmpty && context.invoice != nil {
+                        Text("State is locked because it drives the CGST/SGST or IGST split already recorded on this invoice.")
+                            .font(DS.Font.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    gstModeFootnote
                 }
 
                 Section("Items") {
@@ -519,6 +538,11 @@ struct SalesEditorView: View {
                     Text("Net weight: \(Format.tonnesLabel(dispatchNetKg))")
                         .font(DS.Font.footnote)
                         .foregroundStyle(.secondary)
+                    if let dispatchWeightWarning {
+                        Label(dispatchWeightWarning, systemImage: "exclamationmark.triangle.fill")
+                            .font(DS.Font.footnote)
+                            .foregroundStyle(DS.Color.warning)
+                    }
                 }
 
                 Section("Remarks") {
@@ -548,9 +572,9 @@ struct SalesEditorView: View {
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 620)
+        .frame(width: DS.SheetWidth.editorWide)
         .padding(.top, DS.Spacing.s)
-        .task { loadData() }
+        .task { await loadData() }
     }
 
     private var canSave: Bool {
@@ -565,9 +589,35 @@ struct SalesEditorView: View {
         parseKg(grossText)
     }
 
-    private var dispatchNetKg: Int64 {
+    /// Net weight read off the weighbridge, when both tare and gross are
+    /// entered and gross exceeds tare.
+    private var weighbridgeNetKg: Int64? {
         if let tare = tareKg, let gross = grossKg, gross > tare { return gross - tare }
-        return lines.reduce(0) { $0 + $1.qtyKg }
+        return nil
+    }
+
+    private var billedLineKg: Int64 {
+        lines.reduce(0) { $0 + $1.qtyKg }
+    }
+
+    /// Net weight persisted to the dispatch record: the weighbridge reading
+    /// when available, otherwise the sum of the line items.
+    private var dispatchNetKg: Int64 {
+        weighbridgeNetKg ?? billedLineKg
+    }
+
+    /// Warning shown when the weighbridge reading disagrees with the billed
+    /// line quantities, so a tax invoice never ships a noticeably different
+    /// net weight from what is billed.
+    private var dispatchWeightWarning: String? {
+        if let tare = tareKg, let gross = grossKg, gross <= tare {
+            return "Gross (\(Format.tonnesLabel(gross))) must exceed tare (\(Format.tonnesLabel(tare)))."
+        }
+        guard let discrepancy = InvoiceCalculator.dispatchDiscrepancy(
+            weighbridgeNetKg: weighbridgeNetKg,
+            lineTotalKg: billedLineKg
+        ) else { return nil }
+        return "Weighbridge net \(Format.tonnesLabel(discrepancy.weighedKg)) doesn't match the billed quantity \(Format.tonnesLabel(discrepancy.billedKg))."
     }
 
     private func parseKg(_ text: String) -> Int64? {
@@ -583,49 +633,96 @@ struct SalesEditorView: View {
         Format.paise(discountText)
     }
 
-    private var subtotalPaise: Int64 {
-        lines.reduce(0) { $0 + $1.amountPaise }
-    }
-
-    private var cgstPaise: Int64 {
-        let intra = isIntraState
-        return lines.reduce(0) { partial, line in
-            guard let product = productById[line.productId ?? 0], intra else { return partial }
-            return partial + line.gstPaise(bps: product.gstRateBps) / 2
+    private var invoiceLines: [InvoiceCalculator.Line] {
+        lines.map { draft in
+            InvoiceCalculator.Line(
+                qtyKg: draft.qtyKg,
+                ratePaisePerTonne: draft.ratePaisePerTonne,
+                gstRateBps: productById[draft.productId ?? 0]?.gstRateBps ?? 0
+            )
         }
     }
 
-    private var sgstPaise: Int64 {
-        let intra = isIntraState
-        return lines.reduce(0) { partial, line in
-            guard let product = productById[line.productId ?? 0], intra else { return partial }
-            let gst = line.gstPaise(bps: product.gstRateBps)
-            return partial + gst - gst / 2
-        }
+    private var totals: InvoiceCalculator.Totals {
+        InvoiceCalculator.totals(
+            lines: invoiceLines,
+            transportPaise: transportPaise,
+            discountPaise: discountPaise,
+            isIntraState: isIntraState
+        )
     }
 
-    private var igstPaise: Int64 {
-        let intra = isIntraState
-        return lines.reduce(0) { partial, line in
-            guard let product = productById[line.productId ?? 0], !intra else { return partial }
-            return partial + line.gstPaise(bps: product.gstRateBps)
-        }
-    }
+    private var subtotalPaise: Int64 { totals.subtotalPaise }
 
-    private var grandTotalPaise: Int64 {
-        max(0, subtotalPaise + cgstPaise + sgstPaise + igstPaise + transportPaise - discountPaise)
-    }
+    private var cgstPaise: Int64 { totals.cgstPaise }
+
+    private var sgstPaise: Int64 { totals.sgstPaise }
+
+    private var igstPaise: Int64 { totals.igstPaise }
+
+    private var grandTotalPaise: Int64 { totals.grandTotalPaise }
 
     private var isIntraState: Bool {
-        let customerState = customers.first(where: { $0.id == customerId })?.state?.trimmingCharacters(in: .whitespaces)
-        let business = businessState.trimmingCharacters(in: .whitespaces)
-        if customerState == nil || business.isEmpty { return true }
-        return customerState == business
+        if let pinnedSplitMode {
+            return pinnedSplitMode == .intraState
+        }
+        let customerState = customers.first(where: { $0.id == customerId })?.state
+        return InvoiceCalculator.isIntraState(customerState: customerState, businessState: businessState)
+    }
+
+    /// Explains which GST split this invoice will actually print. For a new
+    /// invoice it is driven by the customer's registered state relative to the
+    /// business state (not the "State" text field); for a saved invoice it is
+    /// the split recorded when the invoice was dispatched and stays pinned.
+    private var gstModeFootnote: some View {
+        let hint: String
+        if let pinnedSplitMode {
+            hint = pinnedSplitMode == .intraState
+                ? "Recorded as CGST + SGST (intra-state); editing keeps this split."
+                : "Recorded as IGST (inter-state); editing keeps this split."
+        } else {
+            let customer = customerId.flatMap { id in customers.first(where: { $0.id == id }) }
+            if customer == nil {
+                hint = "Select a customer to determine whether CGST/SGST or IGST applies."
+            } else if customer?.state?.trimmingCharacters(in: .whitespaces).isEmpty ?? true {
+                hint = "Set the customer's State in Customers to determine CGST/SGST vs IGST."
+            } else {
+                hint = isIntraState
+                    ? "Taxes will print as CGST + SGST (intra-state)."
+                    : "Taxes will print as IGST (inter-state)."
+            }
+        }
+        return Text(hint)
+            .font(DS.Font.footnote)
+            .foregroundStyle(.secondary)
+    }
+
+    /// Warns when this invoice would push the selected customer's exposure
+    /// past their credit limit (0 = no limit). Replaces the existing invoice's
+    /// total when editing so the exposure is not double-counted.
+    private var creditWarning: String? {
+        guard let customerID = customerId,
+              let customer = customers.first(where: { $0.id == customerID }),
+              customer.creditLimitPaise > 0 else { return nil }
+        let existing = context.invoice?.grandTotalPaise ?? 0
+        guard InvoiceCalculator.exceedsCreditLimit(
+            creditLimitPaise: customer.creditLimitPaise,
+            currentOutstandingPaise: outstandingByCustomer[customerID] ?? 0,
+            newInvoiceTotalPaise: grandTotalPaise,
+            existingInvoiceTotalPaise: existing
+        ) else { return nil }
+        return "This invoice pushes \(customer.name) beyond their \(Format.inr(customer.creditLimitPaise)) credit limit."
     }
 
     @ViewBuilder
     private var totalsSummary: some View {
-        HStack {
+        VStack(alignment: .leading, spacing: DS.Spacing.s) {
+            if let creditWarning {
+                Label(creditWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(DS.Font.footnote)
+                    .foregroundStyle(DS.Color.warning)
+            }
+            HStack {
             VStack(alignment: .leading, spacing: DS.Spacing.s) {
                 totalRow("Subtotal", "subtotal")
                 if cgstPaise > 0 {
@@ -648,6 +745,7 @@ struct SalesEditorView: View {
                     .foregroundStyle(.secondary)
                 Text(Format.inr(grandTotalPaise))
                     .font(DS.Font.kpiValue)
+            }
             }
         }
     }
@@ -724,9 +822,9 @@ struct SalesEditorView: View {
         lines.removeAll { $0.id == id }
     }
 
-    private func loadData() {
+    private func loadData() async {
         do {
-            let result = try db.dbQueue.read { db -> (customers: [Customer], vehicles: [Vehicle], products: [Product], rates: [Int64: Int64], businessState: String) in
+            let result = try await db.readAsync { db -> (customers: [Customer], vehicles: [Vehicle], products: [Product], rates: [Int64: Int64], outstanding: [Int64: Int64], businessState: String) in
                 let customers = try Customer.filter(Column("isActive") == true).order(Column("name")).fetchAll(db)
                 let vehicles = try Vehicle.filter(Column("isActive") == true).order(Column("number")).fetchAll(db)
                 let products = try Product.filter(Column("isActive") == true).order(Column("sortOrder"), Column("name")).fetchAll(db)
@@ -735,13 +833,21 @@ struct SalesEditorView: View {
                 for rate in allRates {
                     latest[rate.productId] = rate.ratePaisePerTonne
                 }
+
+                let receivables = try ReceivablesCalculator.snapshot(db: db)
+                var outstanding: [Int64: Int64] = [:]
+                for customer in receivables.byCustomer {
+                    outstanding[customer.customerId] = customer.outstandingPaise
+                }
+
                 let businessState = try AppSetting.value(forKey: "business_state", db: db) ?? ""
-                return (customers, vehicles, products, latest, businessState)
+                return (customers, vehicles, products, latest, outstanding, businessState)
             }
             customers = result.customers
             vehicles = result.vehicles
             products = result.products
             latestRates = result.rates
+            outstandingByCustomer = result.outstanding
             businessState = result.businessState
             var byId: [Int64: Product] = [:]
             for product in products {
@@ -754,8 +860,8 @@ struct SalesEditorView: View {
             }
 
             if context.invoice != nil {
-                loadExistingLines()
-                loadExistingDispatch()
+                await loadExistingLines()
+                await loadExistingDispatch()
             }
             else if lines.isEmpty, let first = products.first {
                 let rate = latestRates[first.id ?? 0]
@@ -774,10 +880,10 @@ struct SalesEditorView: View {
         }
     }
 
-    private func loadExistingLines() {
+    private func loadExistingLines() async {
         guard let invoiceID = context.invoice?.id else { return }
         do {
-            let items = try db.dbQueue.read { db in
+            let items = try await db.readAsync { db in
                 try InvoiceItem.filter(Column("invoiceId") == invoiceID).fetchAll(db)
             }
             lines = items.map { item in
@@ -792,10 +898,10 @@ struct SalesEditorView: View {
         }
     }
 
-    private func loadExistingDispatch() {
+    private func loadExistingDispatch() async {
         guard let invoiceID = context.invoice?.id else { return }
         do {
-            guard let existing = try db.dbQueue.read({ db in
+            guard let existing = try await db.readAsync({ db in
                 try DispatchDetail.filter(Column("invoiceId") == invoiceID).fetchOne(db)
             }) else { return }
             if let tare = existing.tareKg { tareText = String(tare) }
@@ -816,98 +922,121 @@ struct SalesEditorView: View {
             return
         }
         guard let customerID = customerId else { return }
-        do {
-            try db.dbQueue.write { db in
-                var required: [Int64: Int64] = [:]
-                for line in lines where line.qtyKg > 0 && line.ratePaisePerTonne > 0 && line.productId != nil {
-                    guard let productID = line.productId else { continue }
-                    required[productID, default: 0] += line.qtyKg
-                }
-                try StockGate.requireAvailable(
-                    db: db,
-                    replacingInvoiceID: context.invoice?.id,
-                    required: required,
-                    productName: { productById[$0]?.name }
-                )
+        let editingInvoice = context.invoice
+        let userInvoiceNo = invoiceNo
+        let formDate = date
+        let formVehicleId = vehicleId
+        let formPlaceOfSupply = trimmedNil(placeOfSupply)
+        let formState = trimmedNil(state)
+        let formRemarks = trimmedNil(remarks)
+        let formSubtotal = subtotalPaise
+        let formCGST = cgstPaise
+        let formSGST = sgstPaise
+        let formIGST = igstPaise
+        let formTransport = transportPaise
+        let formDiscount = discountPaise
+        let formGrandTotal = grandTotalPaise
+        let formTare = tareKg
+        let formGross = grossKg
+        let formNet = dispatchNetKg
+        let formLoadedBy = trimmedNil(loadedByText)
+        let formTimeOutEnabled = timeOutEnabled
+        let formTimeOut = timeOut
+        let formLines = lines
+        let formProductById = productById
+        Task {
+            do {
+                try await db.writeAsync { db in
+                    var required: [Int64: Int64] = [:]
+                    for line in formLines where line.qtyKg > 0 && line.ratePaisePerTonne > 0 && line.productId != nil {
+                        guard let productID = line.productId else { continue }
+                        required[productID, default: 0] += line.qtyKg
+                    }
+                    try StockGate.requireAvailable(
+                        db: db,
+                        replacingInvoiceID: editingInvoice?.id,
+                        required: required,
+                        productName: { formProductById[$0]?.name }
+                    )
 
-                let existing = context.invoice
-                let resolvedNo: String
-                if let existing {
-                    resolvedNo = existing.invoiceNo
-                } else if invoiceNo.isEmpty {
-                    resolvedNo = try InvoiceNumber.next(db: db)
-                } else {
-                    resolvedNo = invoiceNo
-                }
-                var invoice = existing ?? SalesInvoice(
-                    invoiceNo: resolvedNo,
-                    date: date,
-                    customerId: customerID
-                )
-                invoice.invoiceNo = resolvedNo
-                invoice.date = date
-                invoice.customerId = customerID
-                invoice.vehicleId = vehicleId
-                invoice.placeOfSupply = trimmedNil(placeOfSupply)
-                invoice.state = trimmedNil(state)
-                invoice.status = .dispatched
-                invoice.subtotalPaise = subtotalPaise
-                invoice.cgstPaise = cgstPaise
-                invoice.sgstPaise = sgstPaise
-                invoice.igstPaise = igstPaise
-                invoice.transportChargePaise = transportPaise
-                invoice.discountPaise = discountPaise
-                invoice.grandTotalPaise = grandTotalPaise
-                invoice.remarks = trimmedNil(remarks)
-                invoice.updatedAt = .now
-                if invoice.createdAt == .distantPast { invoice.createdAt = .now }
-                try invoice.save(db)
-                guard let invoiceID = invoice.id else { return }
+                    let resolvedNo: String
+                    if let editingInvoice {
+                        resolvedNo = editingInvoice.invoiceNo
+                    } else if userInvoiceNo.isEmpty {
+                        resolvedNo = try InvoiceNumber.next(db: db)
+                    } else {
+                        resolvedNo = userInvoiceNo
+                    }
+                    var invoice = editingInvoice ?? SalesInvoice(
+                        invoiceNo: resolvedNo,
+                        date: formDate,
+                        customerId: customerID
+                    )
+                    invoice.invoiceNo = resolvedNo
+                    invoice.date = formDate
+                    invoice.customerId = customerID
+                    invoice.vehicleId = formVehicleId
+                    invoice.placeOfSupply = formPlaceOfSupply
+                    invoice.state = formState
+                    invoice.status = .dispatched
+                    invoice.subtotalPaise = formSubtotal
+                    invoice.cgstPaise = formCGST
+                    invoice.sgstPaise = formSGST
+                    invoice.igstPaise = formIGST
+                    invoice.transportChargePaise = formTransport
+                    invoice.discountPaise = formDiscount
+                    invoice.grandTotalPaise = formGrandTotal
+                    invoice.remarks = formRemarks
+                    invoice.updatedAt = .now
+                    if invoice.createdAt == .distantPast { invoice.createdAt = .now }
+                    try invoice.save(db)
+                    guard let invoiceID = invoice.id else { return }
 
-                try StockMovement
-                    .filter(Column("type") == StockMovement.MoveType.sale.rawValue)
-                    .filter(Column("refId") == invoiceID)
-                    .deleteAll(db)
-                try InvoiceItem.filter(Column("invoiceId") == invoiceID).deleteAll(db)
-                try DispatchDetail.filter(Column("invoiceId") == invoiceID).deleteAll(db)
+                    try StockMovement
+                        .filter(Column("type") == StockMovement.MoveType.sale.rawValue)
+                        .filter(Column("refId") == invoiceID)
+                        .deleteAll(db)
+                    try InvoiceItem.filter(Column("invoiceId") == invoiceID).deleteAll(db)
+                    try DispatchDetail.filter(Column("invoiceId") == invoiceID).deleteAll(db)
 
-                for line in lines where line.qtyKg > 0 && line.ratePaisePerTonne > 0 && line.productId != nil {
-                    guard let productID = line.productId else { continue }
-                    let product = productById[productID]
-                    var item = InvoiceItem(
+                    for line in formLines where line.qtyKg > 0 && line.ratePaisePerTonne > 0 && line.productId != nil {
+                        guard let productID = line.productId else { continue }
+                        let product = formProductById[productID]
+                        var item = InvoiceItem(
+                            invoiceId: invoiceID,
+                            productId: productID,
+                            qtyKg: line.qtyKg,
+                            ratePaisePerTonne: line.ratePaisePerTonne,
+                            amountPaise: line.amountPaise,
+                            gstRateBps: product?.gstRateBps ?? 0,
+                            hsn: product?.hsn ?? ""
+                        )
+                        try item.insert(db)
+                        var move = StockMovement(
+                            productId: productID,
+                            date: formDate,
+                            type: .sale,
+                            qtyKg: -line.qtyKg,
+                            refId: invoiceID
+                        )
+                        try move.insert(db)
+                    }
+
+                    var dispatch = DispatchDetail(
                         invoiceId: invoiceID,
-                        productId: productID,
-                        qtyKg: line.qtyKg,
-                        ratePaisePerTonne: line.ratePaisePerTonne,
-                        amountPaise: line.amountPaise,
-                        gstRateBps: product?.gstRateBps ?? 0,
-                        hsn: product?.hsn ?? ""
+                        tareKg: formTare,
+                        grossKg: formGross,
+                        netKg: formNet,
+                        loadedBy: formLoadedBy,
+                        timeOut: formTimeOutEnabled ? formTimeOut : nil
                     )
-                    try item.insert(db)
-                    var move = StockMovement(
-                        productId: productID,
-                        date: date,
-                        type: .sale,
-                        qtyKg: -line.qtyKg,
-                        refId: invoiceID
-                    )
-                    try move.insert(db)
+                    try dispatch.insert(db)
                 }
-
-                var dispatch = DispatchDetail(
-                    invoiceId: invoiceID,
-                    tareKg: tareKg,
-                    grossKg: grossKg,
-                    netKg: dispatchNetKg,
-                    loadedBy: trimmedNil(loadedByText),
-                    timeOut: timeOutEnabled ? timeOut : nil
-                )
-                try dispatch.insert(db)
+                onSave()
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
             }
-            onSave()
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 

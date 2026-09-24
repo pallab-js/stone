@@ -39,8 +39,7 @@ struct SeedBuilder {
     var customers: [Customer] = []
     var vehicles: [Vehicle] = []
     var suppliers: [Supplier] = []
-    var availableKg: [Int64: Int64] = [:]
-    var invoiceCounter = 0
+var availableKg: [Int64: Int64] = [:]
 
     struct ProductSpec {
         var code: String
@@ -70,7 +69,7 @@ struct SeedBuilder {
         ("business_address", "Survey No. 42, Village Khardi, Taluka Wada"),
         ("business_city", "Palghar"),
         ("business_state", "Maharashtra"),
-        ("invoice_prefix", "PI"),
+        ("invoice_prefix", "INV"),
     ]
 
     mutating func run() throws {
@@ -234,19 +233,12 @@ struct SeedBuilder {
         }
         guard !lines.isEmpty else { return }
 
-        var subtotal: Int64 = 0
-        var cgst: Int64 = 0
-        var sgst: Int64 = 0
         var netKg: Int64 = 0
         var itemsToPersist: [InvoiceItem] = []
         for line in lines {
-            let amount = line.qtyKg * line.rate / 1000
-            subtotal += amount
-            let gst = amount * Int64(line.product.gstRateBps) / 10_000
-            cgst += gst / 2
-            sgst += gst - gst / 2
-            netKg += line.qtyKg
             guard let productID = line.product.id else { continue }
+            let amount = InvoiceCalculator.amountPaise(qtyKg: line.qtyKg, ratePaisePerTonne: line.rate)
+            netKg += line.qtyKg
             itemsToPersist.append(
                 InvoiceItem(
                     invoiceId: 0,
@@ -260,26 +252,30 @@ struct SeedBuilder {
             )
         }
 
-        invoiceCounter += 1
-        let year = Calendar.autoupdatingCurrent.component(.year, from: date)
         let transport = Int64(randInt(800...3500)) * 100
-        let grandTotal = subtotal + cgst + sgst + transport
+        let totals = InvoiceCalculator.totals(
+            lines: lines.map {
+                InvoiceCalculator.Line(qtyKg: $0.qtyKg, ratePaisePerTonne: $0.rate, gstRateBps: $0.product.gstRateBps)
+            },
+            transportPaise: transport,
+            isIntraState: true
+        )
 
         var invoice = SalesInvoice(
-            invoiceNo: String(format: "PI-%d-%04d", year, invoiceCounter),
+            invoiceNo: try InvoiceNumber.next(db: db, for: date),
             date: date,
             customerId: customerID,
             vehicleId: vehicle.id,
             placeOfSupply: customer.city,
             state: customer.state ?? "Maharashtra",
             status: .dispatched,
-            subtotalPaise: subtotal,
-            cgstPaise: cgst,
-            sgstPaise: sgst,
+            subtotalPaise: totals.subtotalPaise,
+            cgstPaise: totals.cgstPaise,
+            sgstPaise: totals.sgstPaise,
             igstPaise: 0,
             transportChargePaise: transport,
             discountPaise: 0,
-            grandTotalPaise: grandTotal
+            grandTotalPaise: totals.grandTotalPaise
         )
         try invoice.insert(db)
         guard let invoiceID = invoice.id else { return }
@@ -297,7 +293,7 @@ struct SeedBuilder {
 
         if chance(70) {
             let full = chance(60)
-            let amount = full ? grandTotal : grandTotal / 2
+            let amount = full ? totals.grandTotalPaise : totals.grandTotalPaise / 2
             let modes: [Payment.Mode] = [.cash, .cash, .upi, .upi, .upi, .cheque, .transfer]
             let mode = modes[randInt(0..<modes.count)]
             var payment = Payment(
@@ -317,7 +313,7 @@ struct SeedBuilder {
     private mutating func writeExpenses(on date: Date, dayIndex: Int) throws {
         if dayIndex % 2 == 0 {
             let litres = Int64(randInt(500...900))
-            let ratePaise = Int64((91.0 + Double(randInt(0...100)) / 100.0) * 100)
+            let ratePaise = Int64(9100 + randInt(0...100))
             var purchase = Purchase(
                 date: date,
                 supplierId: suppliers.indices.contains(0) ? suppliers[0].id : nil,

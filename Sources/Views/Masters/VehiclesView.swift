@@ -9,67 +9,37 @@ struct VehicleRowModel: Identifiable, Equatable {
 struct VehiclesView: View {
     @Environment(\.appDatabase) private var db
     @State private var rows: [VehicleRowModel] = []
-    @State private var search = ""
-    @State private var selection: Int64?
-    @State private var editor: VehicleEditorContext?
-    @State private var confirmDelete = false
     @State private var errorMessage: String?
 
-    private var filteredRows: [VehicleRowModel] {
-        guard !search.isEmpty else { return rows }
-        return rows.filter {
-            $0.vehicle.number.localizedCaseInsensitiveContains(search)
-                || ($0.vehicle.driverName ?? "").localizedCaseInsensitiveContains(search)
-        }
-    }
-
     var body: some View {
-        Group {
-            if filteredRows.isEmpty {
-                EmptyStateView(
-                    icon: "truck",
-                    title: search.isEmpty ? "No vehicles yet" : "No matches for “\(search)”",
-                    message: "Own and hired tippers of the fleet, with drivers and capacities."
-                )
-            } else {
-                table
-            }
-        }
-        .searchable(text: $search, prompt: "Search vehicles or drivers")
-        .navigationTitle("Vehicles")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    editor = VehicleEditorContext(vehicle: nil)
-                } label: {
-                    Label("Add Vehicle", systemImage: "plus")
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                Button {
-                    if let row = selectedRow { startEditing(row) }
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
-                .keyboardShortcut("e", modifiers: .command)
-                .disabled(selection == nil)
-                Button(role: .destructive) {
-                    confirmDelete = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .keyboardShortcut(.delete, modifiers: [])
-                .disabled(selection == nil)
-            }
-        }
-        .sheet(item: $editor) { context in
-            VehicleEditorView(context: context) { reload() }
-        }
-        .destructiveConfirmation(
-            title: "Delete vehicle?",
-            message: "Unused vehicles are removed. Those used on invoices are deactivated instead — existing invoices keep their vehicle number.",
-            destructiveLabel: "Delete",
-            isPresented: $confirmDelete
-        ) { deleteSelected() }
+        MasterListView(
+            rows: rows,
+            navigationTitle: "Vehicles",
+            searchPrompt: "Search vehicles or drivers",
+            addLabel: "Add Vehicle",
+            emptyIcon: "truck.pickup.side",
+            emptyTitle: "No vehicles yet",
+            emptyMessage: "Own and hired tippers of the fleet, with drivers and capacities.",
+            deleteConfirmationTitle: "Delete vehicle?",
+            deleteConfirmationMessage: "Unused vehicles are removed. Those used on invoices are deactivated instead — existing invoices keep their vehicle number.",
+            filter: { row, query in
+                row.vehicle.number.localizedCaseInsensitiveContains(query)
+                    || (row.vehicle.driverName ?? "").localizedCaseInsensitiveContains(query)
+            },
+            deactivationMessage: { row in
+                "“\(row.vehicle.number)” is used on invoices, so it was deactivated instead of deleted."
+            },
+            makeNewContext: { VehicleEditorContext(vehicle: nil) },
+            makeEditContext: { VehicleEditorContext(vehicle: $0.vehicle) },
+            editorSheet: { context, onSave in
+                VehicleEditorView(context: context, onSave: onSave)
+            },
+            deleteEntity: { database, id in
+                try MasterDeletion.delete(Vehicle.self, id: id, db: database)
+            },
+            table: vehicleTable,
+            onReload: { Task { await reload() } }
+        )
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -78,12 +48,15 @@ struct VehiclesView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { reload() }
     }
 
-    @ViewBuilder
-    private var table: some View {
-        Table(of: VehicleRowModel.self, selection: $selection) {
+    private func vehicleTable(
+        _ selection: Binding<Int64?>,
+        _ rows: [VehicleRowModel],
+        _ startEditing: @escaping (VehicleRowModel) -> Void,
+        _ deleteRow: @escaping (VehicleRowModel) -> Void
+    ) -> some View {
+        Table(of: VehicleRowModel.self, selection: selection) {
             TableColumn("Vehicle") { row in
                 Text(row.vehicle.number)
                     .font(DS.Font.bodySemibold)
@@ -92,7 +65,7 @@ struct VehiclesView: View {
             TableColumn("Ownership") { row in
                 Badge(
                     text: row.vehicle.ownership.label,
-                    tint: Self.ownershipTint(row.vehicle.ownership)
+                    tint: VehiclesView.ownershipTint(row.vehicle.ownership)
                 )
             }
             .width(min: 90, ideal: 110)
@@ -117,23 +90,21 @@ struct VehiclesView: View {
             }
             .width(min: 80, ideal: 90)
         } rows: {
-            ForEach(filteredRows) { (row: VehicleRowModel) in
+            ForEach(rows) { (row: VehicleRowModel) in
                 TableRow(row)
-                    .contextMenu { rowContextMenu(row) }
+                    .contextMenu {
+                        Button("Edit") { startEditing(row) }
+                        Button("Delete", role: .destructive) { deleteRow(row) }
+                    }
             }
         }
         .alternatingRowBackgrounds()
         .contextMenu(forSelectionType: Int64.self) { selections in
             if let id = selections.first, let row = rows.first(where: { $0.id == id }) {
                 Button("Edit") { startEditing(row) }
+                Button("Delete", role: .destructive) { deleteRow(row) }
             }
-            Button("Delete", role: .destructive) { confirmDelete = true }
         }
-    }
-
-    private var selectedRow: VehicleRowModel? {
-        guard let selection else { return nil }
-        return rows.first { $0.id == selection }
     }
 
     private static func ownershipTint(_ ownership: Vehicle.Ownership) -> SwiftUI.Color {
@@ -143,40 +114,9 @@ struct VehiclesView: View {
         return DS.Color.accent
     }
 
-    private func startEditing(_ row: VehicleRowModel) {
-        editor = VehicleEditorContext(vehicle: row.vehicle)
-    }
-
-    private func rowContextMenu(_ row: VehicleRowModel) -> some View {
-        Group {
-            Button("Edit") { startEditing(row) }
-            Button("Delete", role: .destructive) {
-                selection = row.id
-                confirmDelete = true
-            }
-        }
-    }
-
-    private func deleteSelected() {
-        guard let id = selection,
-              let row = rows.first(where: { $0.id == id }),
-              let vehicleID = row.vehicle.id else { return }
+    private func reload() async {
         do {
-            let outcome = try db.dbQueue.write { db in
-                try MasterDeletion.delete(Vehicle.self, id: vehicleID, db: db)
-            }
-            if outcome == .deactivated {
-                errorMessage = "“\(row.vehicle.number)” is used on invoices, so it was deactivated instead of deleted."
-            }
-            reload()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reload() {
-        do {
-            rows = try db.dbQueue.read { db in
+            rows = try await db.readAsync { db in
                 try Vehicle.order(Column("number")).fetchAll(db).map(VehicleRowModel.init)
             }
         } catch {
@@ -261,26 +201,33 @@ struct VehicleEditorView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { save() }
+                Button("Save") { Task { await save() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
             .padding(DS.Spacing.lg)
         }
-        .frame(width: 460)
+        .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
     }
 
-    private func save() {
+    private func save() async {
+        let formNumber = number.trimmingCharacters(in: .whitespaces).uppercased()
+        let formOwnership = ownership
+        let formCapacityKg = capacityKg
+        let formDriverName = trimmedOrNil(driverName)
+        let formDriverPhone = trimmedOrNil(driverPhone)
+        let formIsActive = isActive
+        let existingVehicle = context.vehicle
         do {
-            try db.dbQueue.write { db in
-                var vehicle = context.vehicle ?? Vehicle(number: "")
-                vehicle.number = number.trimmingCharacters(in: .whitespaces).uppercased()
-                vehicle.ownership = ownership
-                vehicle.capacityKg = capacityKg
-                vehicle.driverName = trimmedOrNil(driverName)
-                vehicle.driverPhone = trimmedOrNil(driverPhone)
-                vehicle.isActive = isActive
+            try await db.writeAsync { db in
+                var vehicle = existingVehicle ?? Vehicle(number: "")
+                vehicle.number = formNumber
+                vehicle.ownership = formOwnership
+                vehicle.capacityKg = formCapacityKg
+                vehicle.driverName = formDriverName
+                vehicle.driverPhone = formDriverPhone
+                vehicle.isActive = formIsActive
                 if vehicle.id == nil {
                     vehicle.createdAt = .now
                 }

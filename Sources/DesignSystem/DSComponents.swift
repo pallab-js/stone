@@ -77,7 +77,6 @@ struct KPIValueCard: View {
 struct Badge: View {
     let text: String
     var tint: SwiftUI.Color = DS.Color.info
-    var filled: Bool = false
 
     var body: some View {
         Text(text)
@@ -85,8 +84,8 @@ struct Badge: View {
             .fontWeight(.semibold)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(filled ? AnyShapeStyle(tint) : AnyShapeStyle(tint.opacity(0.15)))
-            .foregroundStyle(filled ? Color.white : tint)
+            .background(tint.opacity(0.15))
+            .foregroundStyle(tint)
             .clipShape(Capsule())
     }
 }
@@ -227,5 +226,20 @@ extension View {
                 action: action
             )
         )
+    }
+
+    /// Covers the view with an opaque background and spinner while data loads,
+    /// so an empty state or zeroed KPIs never flash on first appearance.
+    func loadingOverlay(_ isLoading: Bool) -> some View {
+        overlay {
+            if isLoading {
+                ZStack {
+                    DS.Color.contentBackground
+                    ProgressView()
+                        .controlSize(.large)
+                }
+                .ignoresSafeArea()
+            }
+        }
     }
 }
