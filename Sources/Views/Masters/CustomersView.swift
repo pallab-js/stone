@@ -40,7 +40,7 @@ struct CustomersView: View {
                 try MasterDeletion.delete(Customer.self, id: id, db: database)
             },
             table: customerTable,
-            onReload: { Task { await reload() } }
+            onReload: { await reload() }
         )
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },

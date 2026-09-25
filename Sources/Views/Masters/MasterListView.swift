@@ -30,7 +30,10 @@ struct MasterListView<
     var editorSheet: (EditorContext, @escaping () -> Void) -> EditorView
     var deleteEntity: @Sendable (Database, Int64) throws -> MasterDeletion.Outcome
     var table: (Binding<Int64?>, [RowModel], @escaping (RowModel) -> Void, @escaping (RowModel) -> Void) -> ListTable
-    var onReload: () -> Void
+    /// Async so `.task` can await the first load before dismissing the loading
+    /// overlay — a synchronous `() -> Void` returning a detached `Task` would
+    /// let `loaded = true` run before any row is fetched.
+    var onReload: () async -> Void
 
     @State private var search = ""
     @State private var selection: Int64?
@@ -88,7 +91,7 @@ struct MasterListView<
             }
         }
         .sheet(item: $editor) { context in
-            editorSheet(context, onReload)
+            editorSheet(context, { Task { await onReload() } })
         }
         .destructiveConfirmation(
             title: deleteConfirmationTitle,
@@ -104,7 +107,7 @@ struct MasterListView<
         } message: {
             Text(errorMessage ?? "")
         }
-        .task { onReload(); loaded = true }
+        .task { await onReload(); loaded = true }
     }
 
     private var selectedRow: RowModel? {
@@ -131,7 +134,7 @@ struct MasterListView<
             if outcome == .deactivated {
                 errorMessage = deactivationMessage(row)
             }
-            onReload()
+            await onReload()
         } catch {
             errorMessage = error.localizedDescription
         }

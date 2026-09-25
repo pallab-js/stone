@@ -58,8 +58,8 @@ enum InvoiceCalculator {
         existingInvoiceTotalPaise: Int64 = 0
     ) -> Bool {
         guard creditLimitPaise > 0 else { return false }
-        let additional = max(0, newInvoiceTotalPaise - existingInvoiceTotalPaise)
-        return currentOutstandingPaise + additional > creditLimitPaise
+        let projectedOutstanding = currentOutstandingPaise - existingInvoiceTotalPaise + newInvoiceTotalPaise
+        return projectedOutstanding > creditLimitPaise
     }
 
     /// Taxable amount for one line:

@@ -189,9 +189,15 @@ struct SalesModuleView: View {
         }
         .alternatingRowBackgrounds()
         .contextMenu(forSelectionType: Int64.self) { selections in
+            // `selections` may be empty (menu opened over blank table area) and
+            // does not necessarily update `selection`, so the destructive action
+            // must target the right-clicked row itself.
             if let id = selections.first, let row = rows.first(where: { $0.id == id }), row.invoice.status != .cancelled {
                 Button("Edit") { startEditing(row) }
-                Button("Cancel Invoice", role: .destructive) { confirmDelete = true }
+                Button("Cancel Invoice", role: .destructive) {
+                    selection = id
+                    confirmDelete = true
+                }
             }
         }
     }
@@ -205,9 +211,17 @@ struct SalesModuleView: View {
         guard let invoiceID = invoice.id else { return }
         Task {
             do {
-                previewData = try await db.readAsync { db in
+                let data = try await db.readAsync { db in
                     try InvoiceDocumentLoader.load(db, invoiceID: invoiceID)
                 }
+                // The loader returns nil when the invoice is gone (deleted or
+                // cancelled elsewhere); showing the sheet anyway would present
+                // a blank page with no explanation.
+                guard let data else {
+                    errorMessage = "This invoice could not be loaded. It may have been deleted."
+                    return
+                }
+                previewData = data
                 showPreview = true
             } catch {
                 errorMessage = error.localizedDescription
@@ -472,20 +486,20 @@ struct SalesEditorView: View {
                 }
 
                 Section("Items") {
-                    ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                    ForEach(lines) { line in
                         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
                             HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
-                                Picker("Product", selection: lineProductBinding(index)) {
+                                Picker("Product", selection: lineProductBinding(line.id)) {
                                     Text("Select product").tag(Int64?.none)
                                     ForEach(products) { product in
                                         Text(product.name).tag(Int64?(product.id ?? 0))
                                     }
                                 }
                                 .frame(minWidth: 200)
-                                TextField("Tonnes", text: lineTonnesBinding(index))
+                                TextField("Tonnes", text: lineTonnesBinding(line.id))
                                     .frame(width: 90)
                                     .multilineTextAlignment(.trailing)
-                                TextField("₹/tonne", text: lineRateBinding(index))
+                                TextField("₹/tonne", text: lineRateBinding(line.id))
                                     .frame(width: 90)
                                     .multilineTextAlignment(.trailing)
                                 Button {
@@ -497,7 +511,7 @@ struct SalesEditorView: View {
                                 .buttonStyle(.plain)
                             }
                             HStack {
-                                Text(lineAmount(index))
+                                Text(lineAmount(line.id))
                                     .font(DS.Font.footnote)
                                     .foregroundStyle(.secondary)
                                 Spacer()
@@ -578,7 +592,15 @@ struct SalesEditorView: View {
     }
 
     private var canSave: Bool {
-        customerId != nil && lines.contains { $0.qtyKg > 0 && $0.ratePaisePerTonne > 0 }
+        guard customerId != nil else { return false }
+        // At least one complete line (product + quantity + rate) is required.
+        guard lines.contains(where: { $0.productId != nil && $0.qtyKg > 0 && $0.ratePaisePerTonne > 0 }) else {
+            return false
+        }
+        // A line with a quantity but no product would be counted in the
+        // printed totals yet never written to invoiceItems (nor deduct stock),
+        // so refuse to save until it is completed or removed.
+        return !lines.contains { $0.productId == nil && ($0.qtyKg > 0 || $0.ratePaisePerTonne > 0) }
     }
 
     private var tareKg: Int64? {
@@ -634,7 +656,9 @@ struct SalesEditorView: View {
     }
 
     private var invoiceLines: [InvoiceCalculator.Line] {
-        lines.map { draft in
+        // Product-less drafts contribute nothing: they are not persisted and
+        // must not inflate the totals shown on the invoice.
+        lines.filter { $0.productId != nil }.map { draft in
             InvoiceCalculator.Line(
                 qtyKg: draft.qtyKg,
                 ratePaisePerTonne: draft.ratePaisePerTonne,
@@ -772,34 +796,45 @@ struct SalesEditorView: View {
         }
     }
 
-    private func lineProductBinding(_ index: Int) -> Binding<Int64?> {
+    // Bindings are keyed by the line's id, never by its position: a captured
+    // index is read/written before SwiftUI re-renders after a line is removed
+    // (or after `lines` is replaced by a fresh load), which would trap with
+    // "Index out of range" on the focused field.
+    private func lineProductBinding(_ id: UUID) -> Binding<Int64?> {
         Binding(
-            get: { lines[index].productId },
-            set: {
-                lines[index].productId = $0
-                if let pid = $0, lines[index].rateText.isEmpty, let rate = latestRates[pid] {
+            get: { lines.first(where: { $0.id == id })?.productId },
+            set: { newValue in
+                guard let index = lines.firstIndex(where: { $0.id == id }) else { return }
+                lines[index].productId = newValue
+                if let pid = newValue, lines[index].rateText.isEmpty, let rate = latestRates[pid] {
                     lines[index].rateText = String(format: "%.2f", Double(rate) / 100)
                 }
             }
         )
     }
 
-    private func lineTonnesBinding(_ index: Int) -> Binding<String> {
+    private func lineTonnesBinding(_ id: UUID) -> Binding<String> {
         Binding(
-            get: { lines[index].tonnesText },
-            set: { lines[index].tonnesText = $0 }
+            get: { lines.first(where: { $0.id == id })?.tonnesText ?? "" },
+            set: { newValue in
+                guard let index = lines.firstIndex(where: { $0.id == id }) else { return }
+                lines[index].tonnesText = newValue
+            }
         )
     }
 
-    private func lineRateBinding(_ index: Int) -> Binding<String> {
+    private func lineRateBinding(_ id: UUID) -> Binding<String> {
         Binding(
-            get: { lines[index].rateText },
-            set: { lines[index].rateText = $0 }
+            get: { lines.first(where: { $0.id == id })?.rateText ?? "" },
+            set: { newValue in
+                guard let index = lines.firstIndex(where: { $0.id == id }) else { return }
+                lines[index].rateText = newValue
+            }
         )
     }
 
-    private func lineAmount(_ index: Int) -> String {
-        let line = lines[index]
+    private func lineAmount(_ id: UUID) -> String {
+        guard let line = lines.first(where: { $0.id == id }) else { return "" }
         if line.amountPaise > 0 {
             return "\(Format.inr(line.amountPaise)) · \(Format.tonnesLabel(line.qtyKg))"
         }
@@ -808,7 +843,7 @@ struct SalesEditorView: View {
 
     private func addLine() {
         let used = Set(lines.compactMap(\.productId))
-        let next = products.first { !used.contains($0.id ?? 0) }
+        let next = products.first { $0.isActive && !used.contains($0.id ?? 0) }
         let rate = next.flatMap { latestRates[$0.id ?? 0] }
         lines.append(
             InvoiceLineDraft(
@@ -827,7 +862,10 @@ struct SalesEditorView: View {
             let result = try await db.readAsync { db -> (customers: [Customer], vehicles: [Vehicle], products: [Product], rates: [Int64: Int64], outstanding: [Int64: Int64], businessState: String) in
                 let customers = try Customer.filter(Column("isActive") == true).order(Column("name")).fetchAll(db)
                 let vehicles = try Vehicle.filter(Column("isActive") == true).order(Column("number")).fetchAll(db)
-                let products = try Product.filter(Column("isActive") == true).order(Column("sortOrder"), Column("name")).fetchAll(db)
+                // Every product, active or not: a deactivated product still on
+                // this invoice must keep its GST rate and HSN, and the picker
+                // has to be able to render the saved selection.
+                let products = try Product.order(Column("sortOrder"), Column("name")).fetchAll(db)
                 let allRates = try ProductRate.order(Column("id")).fetchAll(db)
                 var latest: [Int64: Int64] = [:]
                 for rate in allRates {
@@ -845,12 +883,12 @@ struct SalesEditorView: View {
             }
             customers = result.customers
             vehicles = result.vehicles
-            products = result.products
+            products = result.products.filter(\.isActive)
             latestRates = result.rates
             outstandingByCustomer = result.outstanding
             businessState = result.businessState
             var byId: [Int64: Product] = [:]
-            for product in products {
+            for product in result.products {
                 if let id = product.id { byId[id] = product }
             }
             productById = byId
@@ -875,9 +913,21 @@ struct SalesEditorView: View {
             } else if lines.isEmpty {
                 addLine()
             }
+            products = pickerProducts(from: result.products)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Products offered in the line pickers: the active catalogue, plus any
+    /// deactivated product this invoice already bills so its saved selection
+    /// renders (and its GST/HSN stay resolvable) instead of showing blank.
+    private func pickerProducts(from all: [Product]) -> [Product] {
+        let active = all.filter(\.isActive)
+        let activeIDs = Set(active.compactMap(\.id))
+        let referenced = Set(lines.compactMap(\.productId)).subtracting(activeIDs)
+        guard !referenced.isEmpty else { return active }
+        return active + all.filter { referenced.contains($0.id ?? 0) }
     }
 
     private func loadExistingLines() async {

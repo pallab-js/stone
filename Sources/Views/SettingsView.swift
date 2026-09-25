@@ -10,7 +10,11 @@ struct SettingsView: View {
     @State private var address = ""
     @State private var city = ""
     @State private var state = ""
-    @State private var dirty = false
+    /// Last values written to (or loaded from) the database, used to derive
+    /// dirtiness by comparison — an event flag set from `onChange` would also
+    /// fire for the programmatic writes in `loadProfile()` and light up the
+    /// Save button before the user has touched anything.
+    @State private var loaded = ProfileFields.empty
 
     @State private var showExporter = false
     @State private var backupDocument: DatabaseBackupDocument?
@@ -44,7 +48,7 @@ struct SettingsView: View {
                         }
                         HStack {
                             Spacer()
-                            if saved {
+                            if saved && !dirty {
                                 Label("Saved", systemImage: "checkmark.circle.fill")
                                     .font(DS.Font.footnote)
                                     .foregroundStyle(DS.Color.success)
@@ -202,10 +206,14 @@ struct SettingsView: View {
             TextField(label, text: text)
                 .textFieldStyle(.roundedBorder)
         }
-        .onChange(of: text.wrappedValue) {
-            dirty = true
-            saved = false
-        }
+    }
+
+    private var dirty: Bool {
+        businessName != loaded.name
+            || gstin != loaded.gstin
+            || address != loaded.address
+            || city != loaded.city
+            || state != loaded.state
     }
 
     private func loadProfile() async {
@@ -223,7 +231,10 @@ struct SettingsView: View {
             address = profile["business_address"] ?? ""
             city = profile["business_city"] ?? ""
             state = profile["business_state"] ?? ""
-            dirty = false
+            loaded = ProfileFields(
+                name: businessName, gstin: gstin, address: address, city: city, state: state
+            )
+            saved = false
         } catch {
             noticeMessage = error.localizedDescription
         }
@@ -243,7 +254,9 @@ struct SettingsView: View {
                 try AppSetting.set(key: "business_city", value: formCity, db: db)
                 try AppSetting.set(key: "business_state", value: formState, db: db)
             }
-            dirty = false
+            loaded = ProfileFields(
+                name: formName, gstin: formGstin, address: formAddress, city: formCity, state: formState
+            )
             saved = true
         } catch {
             noticeMessage = error.localizedDescription
@@ -308,4 +321,16 @@ struct SettingsView: View {
             restoreError = error.localizedDescription
         }
     }
+}
+
+/// Snapshot of the business profile as last read from / written to the
+/// database, so dirtiness can be derived by comparison.
+private struct ProfileFields {
+    var name = ""
+    var gstin = ""
+    var address = ""
+    var city = ""
+    var state = ""
+
+    static let empty = ProfileFields()
 }

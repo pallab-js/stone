@@ -42,6 +42,20 @@ final class ExportTests: XCTestCase {
         )
     }
 
+    func testAmountInWordsHandlesTotalsAboveTwoThousandCrore() {
+        // The crore chunk is the only one that can exceed 999, and the old
+        // hundreds branch indexed belowTwenty[n / 100] — a 20-entry array —
+        // with values like 25, trapping while rendering the invoice PDF.
+        XCTAssertEqual(NumberToWords.inr(25_000_000_000), "Rupees Two Thousand Five Hundred Crore")
+        XCTAssertEqual(NumberToWords.inr(200_000_000_000), "Rupees Twenty Thousand Crore")
+        XCTAssertEqual(NumberToWords.inr(1_000_000_000_000), "Rupees One Lakh Crore")
+        XCTAssertEqual(
+            NumberToWords.inr(12_345_678_901_234),
+            "Rupees Twelve Lakh Thirty Four Thousand Five Hundred Sixty Seven Crore "
+                + "Eighty Nine Lakh One Thousand Two Hundred Thirty Four"
+        )
+    }
+
     func testInvoicePDFGenerationFromSeededInvoice() throws {
         let db = AppDatabase.inMemory()
         try DemoSeeder.seedIfNeeded(db.dbQueue)

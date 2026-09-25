@@ -193,4 +193,21 @@ final class InvoiceCalculatorTests: XCTestCase {
             existingInvoiceTotalPaise: 50_000_00
         ))
     }
+
+    // Shrinking an invoice while editing frees headroom: the exposure must be
+    // recomputed as current − old + new, not held at its previous level.
+    func testCreditLimitReductionFreesHeadroom() {
+        XCTAssertFalse(InvoiceCalculator.exceedsCreditLimit(
+            creditLimitPaise: 90_000_00,
+            currentOutstandingPaise: 100_000_00,
+            newInvoiceTotalPaise: 20_000_00,
+            existingInvoiceTotalPaise: 50_000_00
+        ))
+        // …but it can never be counted twice if the caller omits the old total.
+        XCTAssertTrue(InvoiceCalculator.exceedsCreditLimit(
+            creditLimitPaise: 90_000_00,
+            currentOutstandingPaise: 100_000_00,
+            newInvoiceTotalPaise: 20_000_00
+        ))
+    }
 }

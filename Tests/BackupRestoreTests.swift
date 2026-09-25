@@ -79,6 +79,28 @@ final class BackupRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoreRejectsBackupThatIsALinkToTheLiveDatabase() throws {
+        // `standardizedFileURL` strips "." and ".." but does not resolve
+        // symlinks, so a path that merely *points* at the live database must be
+        // compared by real location — otherwise the guard passes, the sidecars
+        // are deleted and the open database is rewritten from a torn read of
+        // itself.
+        let liveURL = fileURL("live.sqlite")
+        _ = try makeDatabase(at: liveURL, businessName: "Only data")
+        let linkURL = fileURL("alias.sqlite")
+        try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: liveURL)
+
+        let state = try AppState(database: AppDatabase.open(at: liveURL), databaseURL: liveURL)
+        XCTAssertThrowsError(try state.restoreBackup(from: linkURL))
+
+        // The live database must still be the one open and usable.
+        let name = try state.database.dbQueue.read { db in
+            try AppSetting.value(forKey: "business_name", db: db)
+        }
+        XCTAssertEqual(name, "Only data")
+    }
+
+    @MainActor
     func testCreateBackupProducesConsistentRestorableFile() throws {
         let liveURL = fileURL("live.sqlite")
         let live = try makeDatabase(at: liveURL, businessName: "Original data")
@@ -115,6 +137,47 @@ final class BackupRestoreTests: XCTestCase {
             try database.execute(sql: "UPDATE grdb_migrations SET identifier = 'v999' WHERE identifier = 'v1'")
         }
         XCTAssertThrowsError(try BackupRestore.validateBackup(at: url))
+    }
+
+    func testValidateRejectsMatchingTableNamesWithIncompatibleSchema() throws {
+        // Same table names and the same recorded schema version, but none of
+        // the real columns: without a column check this file would pass
+        // validation, replace the live database, then fail every query.
+        let url = fileURL("stub.sqlite")
+        let queue = try DatabaseQueue(path: url.path)
+        try queue.write { db in
+            for table in BackupRestore.expectedTables {
+                try db.execute(sql: "CREATE TABLE \(table) (id INTEGER PRIMARY KEY)")
+            }
+            try db.execute(sql: """
+                CREATE TABLE grdb_migrations (
+                    identifier TEXT PRIMARY KEY,
+                    appliedDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """)
+            try db.execute(sql: "INSERT INTO grdb_migrations (identifier) VALUES ('v1')")
+        }
+        try queue.close()
+        XCTAssertThrowsError(try BackupRestore.validateBackup(at: url))
+    }
+
+    @MainActor
+    func testClearAllDataDoesNotReseedDemoDatasetOnNextLaunch() async throws {
+        let liveURL = fileURL("clear.sqlite")
+        let db = try makeDatabase(at: liveURL, businessName: "Fresh")
+        let state = try AppState(database: db, databaseURL: liveURL)
+
+        try await state.resetDatabase(seed: true)
+        let seededInvoices = try await state.database.dbQueue.read { try SalesInvoice.fetchCount($0) }
+        XCTAssertGreaterThan(seededInvoices, 0, "precondition: demo data installed")
+
+        try await state.resetDatabase(seed: false)
+        // Simulate the next launch: `first_launch_seeded` lives in appSettings,
+        // which the clear just wiped — seedIfNeeded must still stand down.
+        try DemoSeeder.seedIfNeeded(state.database.dbQueue)
+        let invoicesAfterClear = try await state.database.dbQueue.read { try SalesInvoice.fetchCount($0) }
+        XCTAssertEqual(invoicesAfterClear, 0, "clearing all data must not resurrect the demo dataset")
+        XCTAssertGreaterThan(state.dataEpoch, 0, "resetDatabase must bump dataEpoch so screens refresh")
     }
 
     func testValidateRejectsBackupWithoutRecordedSchema() throws {

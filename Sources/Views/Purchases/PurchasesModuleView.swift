@@ -147,10 +147,17 @@ struct PurchasesModuleView: View {
         }
         .alternatingRowBackgrounds()
         .contextMenu(forSelectionType: Int64.self) { selections in
+            // The menu can open over blank table area with an empty selection
+            // (or without changing `selection`), so Delete must be scoped to
+            // the right-clicked row rather than whatever row happens to be
+            // selected.
             if let id = selections.first, let row = rows.first(where: { $0.id == id }) {
                 Button("Edit") { startEditing(row) }
+                Button("Delete", role: .destructive) {
+                    selection = id
+                    confirmDelete = true
+                }
             }
-            Button("Delete", role: .destructive) { confirmDelete = true }
         }
     }
 
@@ -268,7 +275,9 @@ struct PurchaseEditorView: View {
         _supplierId = State(initialValue: purchase.supplierId)
         _amountText = State(initialValue: String(format: "%.2f", Double(purchase.amountPaise) / 100))
         _mode = State(initialValue: purchase.mode)
-        _qtyLitresText = State(initialValue: purchase.qtyLitres.map { String(format: "%.0f", $0) } ?? "")
+        // Litres are stored as a Double with decimals — %.0f would drop them
+        // (30.5 L → "30") and no longer match litres × rate.
+        _qtyLitresText = State(initialValue: purchase.qtyLitres.map { String(format: "%.2f", $0) } ?? "")
         _rateText = State(initialValue: purchase.ratePaise.map { String(format: "%.2f", Double($0) / 100) } ?? "")
         _notes = State(initialValue: purchase.notes ?? "")
     }

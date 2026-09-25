@@ -38,7 +38,7 @@ struct SuppliersView: View {
                 try MasterDeletion.delete(Supplier.self, id: id, db: database)
             },
             table: supplierTable,
-            onReload: { Task { await reload() } }
+            onReload: { await reload() }
         )
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },

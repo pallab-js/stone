@@ -140,7 +140,7 @@ struct ReportsModuleView: View {
                         InlineEmptyState(
                             icon: "calendar.badge.exclamationmark",
                             title: "Nothing in this period",
-                            message: "No production, sales or expenses fall between the selected dates. Try widening the date range."
+                            message: "No production, sales, receipts or expenses fall between the selected dates. Try widening the date range."
                         )
                     }
                 }
@@ -683,7 +683,11 @@ extension ReportsModuleView {
         var netPaise: Int64 { salesPaise - expensesPaise }
 
         var hasPeriodActivity: Bool {
-            producedKg > 0 || soldKg > 0 || salesPaise > 0 || expensesPaise > 0 || invoiceCount > 0
+            // Receipts count as activity too: a period containing only
+            // collections against older invoices is not "empty", even though it
+            // shows a populated Collected KPI right above this card.
+            producedKg > 0 || soldKg > 0 || salesPaise > 0 || expensesPaise > 0
+                || invoiceCount > 0 || collectedPaise > 0
         }
     }
 }

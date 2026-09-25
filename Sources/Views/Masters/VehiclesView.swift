@@ -38,7 +38,7 @@ struct VehiclesView: View {
                 try MasterDeletion.delete(Vehicle.self, id: id, db: database)
             },
             table: vehicleTable,
-            onReload: { Task { await reload() } }
+            onReload: { await reload() }
         )
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
@@ -150,7 +150,9 @@ struct VehicleEditorView: View {
         let vehicle = context.vehicle ?? Vehicle(number: "")
         _number = State(initialValue: vehicle.number)
         _ownership = State(initialValue: vehicle.ownership)
-        _capacity = State(initialValue: String(format: "%.0f", Double(vehicle.capacityKg) / 1000.0))
+        // %.3f preserves the stored kilogram precision (12,500 kg → "12.5");
+        // %.0f would round-trip it back as 12,000 kg on the next save.
+        _capacity = State(initialValue: String(format: "%.3f", Double(vehicle.capacityKg) / 1000.0))
         _driverName = State(initialValue: vehicle.driverName ?? "")
         _driverPhone = State(initialValue: vehicle.driverPhone ?? "")
         _isActive = State(initialValue: vehicle.isActive)
@@ -161,7 +163,9 @@ struct VehicleEditorView: View {
     }
 
     private var capacityKg: Int64 {
-        guard let tonnes = Format.parse(capacity) else { return 20_000 }
+        // An unparseable field keeps the vehicle's current capacity instead of
+        // silently overwriting it with the 20 t default.
+        guard let tonnes = Format.parse(capacity) else { return context.vehicle?.capacityKg ?? 20_000 }
         return Int64((tonnes * 1000).rounded())
     }
 

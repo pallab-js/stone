@@ -39,7 +39,7 @@ struct ProductsView: View {
                 try MasterDeletion.delete(Product.self, id: id, db: database)
             },
             table: productTable,
-            onReload: { Task { await reload() } }
+            onReload: { await reload() }
         )
         .alert("Something went wrong", isPresented: Binding(
             get: { errorMessage != nil },
@@ -174,7 +174,9 @@ struct ProductEditorView: View {
             initialValue: product.cftFactor.map { String(format: "%.2f", $0) } ?? ""
         )
         _ratePerTonne = State(
-            initialValue: context.ratePaisePerTonne.map { String(format: "%.0f", Double($0) / 100.0) } ?? ""
+            // %.2f, not %.0f: rates are stored in paise, so rounding to whole
+            // rupees here would silently rewrite e.g. ₹6500.50 on every edit-save.
+            initialValue: context.ratePaisePerTonne.map { String(format: "%.2f", Double($0) / 100.0) } ?? ""
         )
     }
 

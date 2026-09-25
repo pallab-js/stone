@@ -78,10 +78,17 @@ final class AppState {
             for table in tables {
                 try db.execute(sql: "DELETE FROM \(table)")
             }
+            if !seed {
+                // The seed flag lives in appSettings, which was just cleared;
+                // re-arm it so the demo dataset is not silently written back
+                // into this now-empty database on the next launch.
+                try AppSetting.set(key: "first_launch_seeded", value: "1", db: db)
+            }
         }
         if seed {
             try await database.dbQueue.write { db in try DemoSeeder.seed(db: db) }
         }
+        dataEpoch += 1
     }
 
     /// Validates `backupURL`, swaps it in for the live database file, then
@@ -91,8 +98,18 @@ final class AppState {
         guard let url = databaseURL else {
             throw BackupRestoreError.invalidFile("The live database is not available for restore.")
         }
-        try BackupRestore.replace(databaseURL: url, with: backupURL)
-        database = try AppDatabase.open(at: url)
+        // The live queue is closed inside `replace` before the file is swapped.
+        // If reopening the restored file fails we must never keep serving
+        // writes through the closed connection (they would silently vanish),
+        // so the app falls back to the blocking launch-error screen instead.
+        try BackupRestore.replace(databaseURL: url, with: backupURL, closing: database.dbQueue)
+        do {
+            database = try AppDatabase.open(at: url)
+        } catch {
+            launchError = "The backup was restored but could not be reopened: \(error.localizedDescription)"
+            dataEpoch += 1
+            throw error
+        }
         dataEpoch += 1
     }
 }

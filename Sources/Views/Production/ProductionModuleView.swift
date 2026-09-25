@@ -166,10 +166,17 @@ struct ProductionModuleView: View {
         }
         .alternatingRowBackgrounds()
         .contextMenu(forSelectionType: Int64.self) { selections in
+            // The menu can open over blank table area with an empty selection
+            // (or without changing `selection`), so Delete must be scoped to
+            // the right-clicked row rather than whatever row happens to be
+            // selected.
             if let id = selections.first, let row = rows.first(where: { $0.id == id }) {
                 Button("Edit") { startEditing(row) }
+                Button("Delete", role: .destructive) {
+                    selection = id
+                    confirmDelete = true
+                }
             }
-            Button("Delete", role: .destructive) { confirmDelete = true }
         }
     }
 
@@ -210,15 +217,14 @@ struct ProductionModuleView: View {
             try await db.writeAsync { db in
                 // Deleting a batch removes its production credits; block if the
                 // output has since been consumed and the ledger would go negative.
+                // The gate sums duplicate products for us — per-line checks would
+                // only prove the balance covers each line, not their total.
                 let items = try ProductionItem.filter(Column("batchId") == batchID).fetchAll(db)
-                for item in items {
-                    try StockGate.requireForRemoval(
-                        db: db,
-                        removingKg: item.qtyKg,
-                        productID: item.productId,
-                        productName: { pid in try? Product.fetchOne(db, key: pid)?.name }
-                    )
-                }
+                try StockGate.requireForRemoval(
+                    db: db,
+                    removing: items.map { (productID: $0.productId, qtyKg: $0.qtyKg) },
+                    productName: { pid in try? Product.fetchOne(db, key: pid)?.name }
+                )
                 try StockMovement
                     .filter(Column("type") == StockMovement.MoveType.production.rawValue)
                     .filter(Column("refId") == batchID)
@@ -312,15 +318,23 @@ struct ProductionEditorView: View {
         let batch = context.batch ?? ProductionBatch(date: .now)
         _date = State(initialValue: batch.date)
         _shift = State(initialValue: batch.shift)
-        _hoursText = State(initialValue: batch.machineHours.map { String(format: "%.1f", $0) } ?? "")
-        _dieselText = State(initialValue: batch.dieselLitres.map { String(format: "%.0f", $0) } ?? "")
+        // Round-trip the stored precision (%.2f), not a display rounding:
+        // 8.55 machine hours or 30.5 diesel litres would otherwise be rewritten
+        // as 8.6 / 30 on the next save.
+        _hoursText = State(initialValue: batch.machineHours.map { String(format: "%.2f", $0) } ?? "")
+        _dieselText = State(initialValue: batch.dieselLitres.map { String(format: "%.2f", $0) } ?? "")
         _operatorName = State(initialValue: batch.operatorName ?? "")
         _notes = State(initialValue: batch.notes ?? "")
         _lines = State(initialValue: [])
     }
 
     private var canSave: Bool {
-        lines.contains { $0.qtyKg > 0 }
+        // A line with a quantity but no product would be skipped on save
+        // (`guard let productID = line.productId else { continue }`), silently
+        // dropping the production output, so require a complete line and reject
+        // any half-finished one.
+        guard lines.contains(where: { $0.productId != nil && $0.qtyKg > 0 }) else { return false }
+        return !lines.contains { $0.productId == nil && $0.qtyKg > 0 }
     }
 
     var body: some View {
@@ -346,15 +360,15 @@ struct ProductionEditorView: View {
                 }
 
                 Section("Output (tonnes)") {
-                    ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                    ForEach(lines) { line in
                         HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
-                            Picker("Product", selection: lineProductBinding(index)) {
+                            Picker("Product", selection: lineProductBinding(line.id)) {
                                 Text("Select product").tag(Int64?.none)
                                 ForEach(products) { product in
                                     Text(product.name).tag(Int64?(product.id ?? 0))
                                 }
                             }
-                            TextField("Tonnes", text: lineTonnesBinding(index))
+                            TextField("Tonnes", text: lineTonnesBinding(line.id))
                                 .frame(width: 110)
                                 .multilineTextAlignment(.trailing)
                             Button {
@@ -409,23 +423,32 @@ struct ProductionEditorView: View {
         }
     }
 
-    private func lineProductBinding(_ index: Int) -> Binding<Int64?> {
+    // Keyed by line id, not position: a captured index can point past the end
+    // of `lines` once a line is removed or the array is replaced by a load
+    // finishing, trapping on the still-focused field.
+    private func lineProductBinding(_ id: UUID) -> Binding<Int64?> {
         Binding(
-            get: { lines[index].productId },
-            set: { lines[index].productId = $0 }
+            get: { lines.first(where: { $0.id == id })?.productId },
+            set: { newValue in
+                guard let index = lines.firstIndex(where: { $0.id == id }) else { return }
+                lines[index].productId = newValue
+            }
         )
     }
 
-    private func lineTonnesBinding(_ index: Int) -> Binding<String> {
+    private func lineTonnesBinding(_ id: UUID) -> Binding<String> {
         Binding(
-            get: { lines[index].tonnesText },
-            set: { lines[index].tonnesText = $0 }
+            get: { lines.first(where: { $0.id == id })?.tonnesText ?? "" },
+            set: { newValue in
+                guard let index = lines.firstIndex(where: { $0.id == id }) else { return }
+                lines[index].tonnesText = newValue
+            }
         )
     }
 
     private func addLine() {
         let used = Set(lines.compactMap(\.productId))
-        let next = products.first { !used.contains($0.id ?? 0) }
+        let next = products.first { $0.isActive && !used.contains($0.id ?? 0) }
         lines.append(ProductionLineDraft(productId: next?.id))
     }
 
@@ -435,11 +458,10 @@ struct ProductionEditorView: View {
 
     private func loadProducts() async {
         do {
-            products = try await db.readAsync { db in
-                try Product.filter(Column("isActive") == true)
-                    .order(Column("sortOrder"), Column("name"))
-                    .fetchAll(db)
+            let all = try await db.readAsync { db in
+                try Product.order(Column("sortOrder"), Column("name")).fetchAll(db)
             }
+            products = all.filter(\.isActive)
             if context.batch != nil {
                 if let batchID = context.batch?.id {
                     let items = try await db.readAsync { db in
@@ -452,6 +474,13 @@ struct ProductionEditorView: View {
                                 tonnesText: String(format: "%.3f", Double(item.qtyKg) / 1000)
                             )
                         )
+                    }
+                    // A deactivated product still on this batch must remain
+                    // selectable, otherwise the picker renders blank for it.
+                    let activeIDs = Set(products.compactMap(\.id))
+                    let referenced = Set(lines.compactMap(\.productId)).subtracting(activeIDs)
+                    if !referenced.isEmpty {
+                        products += all.filter { referenced.contains($0.id ?? 0) }
                     }
                 }
             } else if lines.isEmpty, let first = products.first {
@@ -503,17 +532,14 @@ struct ProductionEditorView: View {
                         newByProduct[productID, default: 0] += line.qtyKg
                     }
                 }
-                for old in oldItems {
-                    let newQty = newByProduct[old.productId] ?? 0
-                    if newQty < old.qtyKg {
-                        try StockGate.requireForRemoval(
-                            db: db,
-                            removingKg: old.qtyKg - newQty,
-                            productID: old.productId,
-                            productName: { pid in try? Product.fetchOne(db, key: pid)?.name }
-                        )
-                    }
-                }
+                // The gate compares per-product *totals* (old vs new), so a batch
+                // holding several lines for one product can't slip past it.
+                try StockGate.requireForRemoval(
+                    db: db,
+                    reducing: oldItems.map { (productID: $0.productId, qtyKg: $0.qtyKg) },
+                    to: newByProduct,
+                    productName: { pid in try? Product.fetchOne(db, key: pid)?.name }
+                )
                 try StockMovement
                     .filter(Column("type") == StockMovement.MoveType.production.rawValue)
                     .filter(Column("refId") == id)

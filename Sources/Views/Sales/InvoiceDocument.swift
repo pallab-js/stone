@@ -285,7 +285,14 @@ enum NumberToWords {
     private static func countWords(_ n: Int) -> String {
         if n < 20 { return belowTwenty[n] }
         if n < 100 { return tens[n / 10] + (n % 10 > 0 ? " " + belowTwenty[n % 10] : "") }
-        return belowTwenty[n / 100] + " Hundred" + (n % 100 > 0 ? " " + countWords(n % 100) : "")
+        if n < 1000 {
+            return belowTwenty[n / 100] + " Hundred" + (n % 100 > 0 ? " " + countWords(n % 100) : "")
+        }
+        // `belowTwenty` only has 20 entries, so indexing it with `n / 100`
+        // (as the < 1000 branch does) traps once a chunk reaches 2000 — which
+        // the crore chunk can. Re-split into labelled units instead; every
+        // resulting chunk is strictly smaller, so this always terminates.
+        return twoDigitWords(for: n)
     }
 
     private static func chunks(_ n: Int) -> [(value: Int, label: String)] {

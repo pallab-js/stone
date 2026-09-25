@@ -11,15 +11,16 @@ enum InvoiceNumber {
         let year = Calendar.autoupdatingCurrent.component(.year, from: date)
         let prefix = (try AppSetting.value(forKey: "invoice_prefix", db: db)) ?? "INV"
         let pattern = "\(prefix)-\(year)-"
-        // Take the MAX existing number for this year so deletion never makes
-        // the next number collide with an existing invoice.
-        if let maxNo = try String.fetchOne(
+        let matchingNumbers = try String.fetchAll(
             db,
-            sql: "SELECT MAX(invoiceNo) FROM salesInvoices WHERE invoiceNo LIKE ?",
+            sql: "SELECT invoiceNo FROM salesInvoices WHERE invoiceNo LIKE ?",
             arguments: [pattern + "%"]
-        ), let last = maxNo.split(separator: "-").last, let number = Int(last) {
-            return String(format: "%@%04d", pattern, number + 1)
-        }
-        return String(format: "%@%04d", pattern, 1)
+        )
+        let maxNumber = matchingNumbers.compactMap { no -> Int? in
+            guard let last = no.split(separator: "-").last else { return nil }
+            return Int(last)
+        }.max() ?? 0
+
+        return String(format: "%@%04d", pattern, maxNumber + 1)
     }
 }

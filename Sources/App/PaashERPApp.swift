@@ -19,6 +19,7 @@ struct PaashERPApp: App {
         }
         Settings {
             SettingsView()
+                .id(appState.dataEpoch)
                 .environment(appState)
                 .environment(\.appDatabase, appState.database)
                 .frame(width: 560)

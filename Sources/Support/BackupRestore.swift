@@ -62,6 +62,20 @@ enum BackupRestore {
                         "The file is not a PaashERP database (missing \(missing.joined(separator: ", ")))."
                     )
                 }
+                // Matching table names alone do not prove a compatible schema:
+                // a foreign SQLite file could pass and then fail on the first
+                // query after it has already replaced the live database.
+                let invoiceColumns = try String.fetchAll(
+                    db, sql: "SELECT name FROM pragma_table_info('salesInvoices')"
+                )
+                guard invoiceColumns.contains("grandTotalPaise") else {
+                    throw BackupRestoreError.invalidFile(
+                        "The file has PaashERP table names but an incompatible schema."
+                    )
+                }
+                guard try Row.fetchAll(db, sql: "PRAGMA foreign_key_check").isEmpty else {
+                    throw BackupRestoreError.invalidFile("The database has broken record links.")
+                }
                 let schemaVersions = Set(
                     try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations")
                 )
@@ -88,21 +102,39 @@ enum BackupRestore {
         }
     }
 
-    /// Replaces the live database file with the backup, discarding any stale
-    /// SQLite sidecar (`-wal`, `-shm`, `-journal`) files first.
-    static func replace(databaseURL: URL, with backupURL: URL) throws {
-        guard databaseURL.standardizedFileURL.path != backupURL.standardizedFileURL.path else {
+    /// Replaces the live database file with the backup.
+    ///
+    /// Ordering matters for safety: the backup bytes are read *before* anything
+    /// is touched, `queue` is closed *before* the file it owns is swapped out
+    /// (so no connection is ever left pointing at an unlinked inode), and stale
+    /// SQLite sidecars (`-wal`, `-shm`, `-journal`) are removed only once the
+    /// new content is ready to land — a leftover journal from the old database
+    /// would otherwise be replayed over the restored file on the next open.
+    static func replace(databaseURL: URL, with backupURL: URL, closing queue: DatabaseQueue) throws {
+        guard databaseURL.resolvingSymlinksInPath().standardizedFileURL.path
+            != backupURL.resolvingSymlinksInPath().standardizedFileURL.path else {
             throw BackupRestoreError.invalidFile("That is the live database itself — pick a different backup file.")
         }
+        let data: Data
+        do {
+            data = try Data(contentsOf: backupURL)
+        } catch {
+            throw BackupRestoreError.invalidFile("The backup file could not be read.")
+        }
+        try queue.close()
         let fileManager = FileManager.default
         for suffix in ["-wal", "-shm", "-journal"] {
             let sidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-            if fileManager.fileExists(atPath: sidecar.path) {
-                try? fileManager.removeItem(at: sidecar)
+            guard fileManager.fileExists(atPath: sidecar.path) else { continue }
+            do {
+                try fileManager.removeItem(at: sidecar)
+            } catch {
+                throw BackupRestoreError.replaceFailed(
+                    "A stale SQLite journal next to the live database could not be removed, so it was not overwritten."
+                )
             }
         }
         do {
-            let data = try Data(contentsOf: backupURL)
             try data.write(to: databaseURL, options: .atomic)
         } catch {
             throw BackupRestoreError.replaceFailed("The backup could not be written in place of the live database.")

@@ -943,6 +943,83 @@ final class BusinessWorkflowTests: XCTestCase {
         })
     }
 
+    func testProductionRemovalGateAggregatesDuplicateProductLines() throws {
+        let product = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm")
+        }
+        let customer = try appDatabase.dbQueue.write { db in
+            try makeCustomer(db: db, name: "Dup Line Customer")
+        }
+        // One batch, two lines of the same product: 6 t + 6 t of credits.
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(product.id!, 6_000), (product.id!, 6_000)])
+        }
+        // 4 t sold → 8 t on hand.
+        try appDatabase.dbQueue.write { db in
+            try saveInvoice(db: db, invoiceNo: "INV-2026-0302", date: .now, customerID: customer.id!, intraState: true,
+                            lines: [DraftLine(productID: product.id!, qtyKg: 4_000, ratePaisePerTonne: 100_000, gstRateBps: 500)])
+        }
+        let onHand = try appDatabase.dbQueue.read { try balanceKg(db: $0, productID: product.id!) }
+        XCTAssertEqual(onHand, 8_000)
+
+        // Mirrors ProductionModuleView.deleteSelected(): each 6 t line alone
+        // fits the 8 t balance, so a per-line gate would let the delete through
+        // and leave the ledger at −4 t. The 12 t total must be rejected.
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(
+                db: db,
+                removing: [(productID: product.id!, qtyKg: 6_000), (productID: product.id!, qtyKg: 6_000)],
+                productName: { _ in "10mm" }
+            )
+        }) { error in
+            XCTAssertEqual(error as? InvoiceValidationError,
+                           .insufficientStock(product: "10mm", availableKg: 8_000, neededKg: 12_000))
+        }
+        // Removing just one line's worth still fits — only the sum is blocked.
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(
+                db: db,
+                removing: [(productID: product.id!, qtyKg: 6_000)],
+                productName: { _ in "10mm" }
+            )
+        })
+    }
+
+    func testShrinkingBatchWithDuplicateLinesComparesPerProductTotals() throws {
+        let product = try appDatabase.dbQueue.write { db in
+            try makeProduct(db: db, code: "TEN", name: "10mm")
+        }
+        let customer = try appDatabase.dbQueue.write { db in
+            try makeCustomer(db: db, name: "Shrink Dup Customer")
+        }
+        // Two 6 t lines for one product, 4 t sold → 8 t on hand.
+        try appDatabase.dbQueue.write { db in
+            try saveBatch(db: db, date: .now, lines: [(product.id!, 6_000), (product.id!, 6_000)])
+        }
+        try appDatabase.dbQueue.write { db in
+            try saveInvoice(db: db, invoiceNo: "INV-2026-0303", date: .now, customerID: customer.id!, intraState: true,
+                            lines: [DraftLine(productID: product.id!, qtyKg: 4_000, ratePaisePerTonne: 100_000, gstRateBps: 500)])
+        }
+        let old: [(productID: Int64, qtyKg: Int64)] = [
+            (productID: product.id!, qtyKg: 6_000),
+            (productID: product.id!, qtyKg: 6_000),
+        ]
+
+        // Mirrors ProductionEditorView.saveBatch(): editing the batch down to a
+        // single 6 t line removes 6 t, which the 8 t balance can absorb.
+        XCTAssertNoThrow(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, reducing: old, to: [product.id!: 6_000], productName: { _ in "10mm" })
+        })
+        // Removing the product entirely takes all 12 t of credits out; each old
+        // line compared on its own (6 t) would have passed against 8 t.
+        XCTAssertThrowsError(try appDatabase.dbQueue.write { db in
+            try StockGate.requireForRemoval(db: db, reducing: old, to: [Int64: Int64](), productName: { _ in "10mm" })
+        }) { error in
+            XCTAssertEqual(error as? InvoiceValidationError,
+                           .insufficientStock(product: "10mm", availableKg: 8_000, neededKg: 12_000))
+        }
+    }
+
     func testDeletingManualOpeningBlockedWhenAlreadyConsumed() throws {
         let product = try appDatabase.dbQueue.write { db in
             try makeProduct(db: db, code: "TEN", name: "10mm")

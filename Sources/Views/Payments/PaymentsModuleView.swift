@@ -164,10 +164,17 @@ struct PaymentsModuleView: View {
         }
         .alternatingRowBackgrounds()
         .contextMenu(forSelectionType: Int64.self) { selections in
+            // The menu can open over blank table area with an empty selection
+            // (or without changing `selection`), so Delete must be scoped to
+            // the right-clicked row rather than whatever row happens to be
+            // selected.
             if let id = selections.first, let row = rows.first(where: { $0.id == id }) {
                 Button("Edit") { startEditing(row) }
+                Button("Delete", role: .destructive) {
+                    selection = id
+                    confirmDelete = true
+                }
             }
-            Button("Delete", role: .destructive) { confirmDelete = true }
         }
     }
 

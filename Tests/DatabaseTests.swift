@@ -118,4 +118,72 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(isActive, false)
         XCTAssertEqual(invoiceCount, 1) // invoice keeps its snapshot
     }
+
+    func testMasterDeletionDeactivatesCustomerReferencedOnlyByPayments() throws {
+        // `payments` has no foreign key to its party, so the delete would
+        // otherwise succeed and orphan the payment (and drop it from the
+        // receivables maths, while reports still sum it).
+        let id: Int64 = try appDatabase.dbQueue.write { db in
+            var customer = Customer(name: "Advance Only")
+            try customer.insert(db)
+            var payment = Payment(partyType: .customer, partyId: customer.id!, kind: .advance, amountPaise: 50_000)
+            try payment.insert(db)
+            return customer.id!
+        }
+        let outcome = try appDatabase.dbQueue.write { db in
+            try MasterDeletion.delete(Customer.self, id: id, db: db)
+        }
+        XCTAssertEqual(outcome, .deactivated)
+        let (customerCount, paymentCount, isActive) = try appDatabase.dbQueue.read { db in
+            (try Customer.fetchCount(db), try Payment.fetchCount(db), try Customer.fetchOne(db, key: id)!.isActive)
+        }
+        XCTAssertEqual(customerCount, 1, "customer must be deactivated, not deleted")
+        XCTAssertEqual(paymentCount, 1, "payment must survive")
+        XCTAssertEqual(isActive, false)
+    }
+
+    func testMasterDeletionDeactivatesSupplierReferencedByPurchase() throws {
+        // `purchases.supplierId` is ON DELETE SET NULL, so a plain delete would
+        // succeed while silently stripping the supplier off every purchase.
+        let id: Int64 = try appDatabase.dbQueue.write { db in
+            var supplier = Supplier(name: "Crusher Hire")
+            try supplier.insert(db)
+            var purchase = Purchase(supplierId: supplier.id!, category: .royalty, amountPaise: 100_000)
+            try purchase.insert(db)
+            return supplier.id!
+        }
+        let outcome = try appDatabase.dbQueue.write { db in
+            try MasterDeletion.delete(Supplier.self, id: id, db: db)
+        }
+        XCTAssertEqual(outcome, .deactivated)
+        let (supplierCount, supplierID, isActive) = try appDatabase.dbQueue.read { db in
+            (try Supplier.fetchCount(db), try Purchase.fetchOne(db)!.supplierId, try Supplier.fetchOne(db, key: id)!.isActive)
+        }
+        XCTAssertEqual(supplierCount, 1, "supplier must be deactivated, not deleted")
+        XCTAssertEqual(supplierID, id, "purchase must keep its supplier")
+        XCTAssertEqual(isActive, false)
+    }
+
+    func testMasterDeletionStillHardDeletesUnusedSupplierAndCustomer() throws {
+        let (supplierID, customerID): (Int64, Int64) = try appDatabase.dbQueue.write { db in
+            var supplier = Supplier(name: "Unused")
+            try supplier.insert(db)
+            var customer = Customer(name: "Unused")
+            try customer.insert(db)
+            return (supplier.id!, customer.id!)
+        }
+        let outcomes = try appDatabase.dbQueue.write { db in
+            (
+                try MasterDeletion.delete(Supplier.self, id: supplierID, db: db),
+                try MasterDeletion.delete(Customer.self, id: customerID, db: db)
+            )
+        }
+        XCTAssertEqual(outcomes.0, .deleted)
+        XCTAssertEqual(outcomes.1, .deleted)
+        let counts = try appDatabase.dbQueue.read { db in
+            (try Supplier.fetchCount(db), try Customer.fetchCount(db))
+        }
+        XCTAssertEqual(counts.0, 0)
+        XCTAssertEqual(counts.1, 0)
+    }
 }
