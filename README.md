@@ -105,6 +105,20 @@ xcodegen generate
 xcodebuild -scheme PaashERP -configuration Debug build
 ```
 
+### SwiftPM quick start
+
+For day-to-day development you can skip XcodeGen — `Package.swift` builds the
+same sources:
+
+```sh
+swift run      # build and launch the app
+swift test     # run the test suite
+```
+
+This produces a bare executable without the sandbox entitlements and generated
+Info.plist, so shipping and CI builds still go through `xcodegen generate &&
+xcodebuild`.
+
 ### First launch
 
 On first launch the app creates `~/Library/Application Support/PaashERP/`
