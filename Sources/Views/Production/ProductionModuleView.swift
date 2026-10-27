@@ -68,6 +68,7 @@ struct ProductionModuleView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DS.Color.contentBackground)
         .navigationTitle("Production")
+        .toolbarTitleDisplayMode(.inline)
         .loadingOverlay(!loaded)
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search shift, operator or notes")
         .toolbar {

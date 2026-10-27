@@ -36,10 +36,10 @@ enum DS {
             return mono ? base.monospacedDigit() : base
         }
 
-        static let pageTitle = system(22, weight: .semibold)
-        static let sectionTitle = system(15, weight: .semibold)
+        static let pageTitle = system(24, weight: .semibold)
+        static let sectionTitle = system(16, weight: .semibold)
         static let groupLabel = system(11, weight: .semibold)
-        static let kpiValue = system(30, weight: .bold, design: .rounded, mono: true)
+        static let kpiValue = system(28, weight: .bold, design: .rounded, mono: true)
         static let kpiUnit = system(13, weight: .semibold)
         static let body = system(13)
         static let bodySemibold = system(13, weight: .semibold)

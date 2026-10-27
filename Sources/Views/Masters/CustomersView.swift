@@ -236,6 +236,7 @@ struct CustomerEditorView: View {
         }
         .frame(width: DS.SheetWidth.editor)
         .padding(.top, DS.Spacing.s)
+        .presentationSizing(.form)
     }
 
     private func save() async {

@@ -33,7 +33,7 @@ struct CardContainer<Content: View>: View {
                 RoundedRectangle(cornerRadius: DS.Radius.standard, style: .continuous)
                     .stroke(DS.Color.hairline, lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
+            .shadow(color: .black.opacity(0.04), radius: 6, y: 1)
     }
 }
 
@@ -48,9 +48,9 @@ struct KPIValueCard: View {
         CardContainer {
             HStack(alignment: .top, spacing: DS.Spacing.m) {
                 Image(systemName: icon)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 36, height: 36)
                     .background(Circle().fill(tint))
                 VStack(alignment: .leading, spacing: DS.Spacing.xs) {
                     Text(title)

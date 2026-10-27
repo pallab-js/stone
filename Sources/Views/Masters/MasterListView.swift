@@ -66,6 +66,7 @@ struct MasterListView<
         .loadingOverlay(!loaded)
         .searchable(text: $search, placement: .toolbar, prompt: searchPrompt)
         .navigationTitle(navigationTitle)
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {

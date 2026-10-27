@@ -62,14 +62,14 @@ var availableKg: [Int64: Int64] = [:]
         ProductSpec(code: "MSD", name: "M-Sand", category: "msand", gstBps: 500, ratePaisePerTonne: 95_000, lowKg: 50_000, highKg: 100_000, everyDays: 2),
     ]
 
-    static let operators = ["Rajesh Sawant", "Raju Gavit", "Mahesh Bhoir", "Sandeep Kadam"]
+    static let operators = ["Ranjan Bora", "Dipak Saikia", "Biren Gogoi", "Manoj Kalita"]
     static let businessSettings: [(String, String)] = [
-        ("business_name", "Shree Vitthal Stone Crusher"),
-        ("business_gstin", "27AABCS1234F1Z5"),
-        ("business_address", "Survey No. 42, Village Khardi, Taluka Wada"),
-        ("business_city", "Palghar"),
-        ("business_state", "Maharashtra"),
-        ("invoice_prefix", "INV"),
+        ("business_name", "Brahmaputra Valley Stone Crushers"),
+        ("business_gstin", "18AABCB1234F1Z5"),
+        ("business_address", "Plot No. 12, Industrial Growth Centre, Amingaon"),
+        ("business_city", "Guwahati"),
+        ("business_state", "Assam"),
+        ("invoice_prefix", "BVC"),
     ]
 
     mutating func run() throws {
@@ -90,8 +90,10 @@ var availableKg: [Int64: Int64] = [:]
     }
 
     private func day(at index: Int) -> Date {
-        let start = calendar.startOfDay(for: .now)
-        return calendar.date(byAdding: .day, value: index - 29, to: start) ?? start
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Kolkata") ?? .current
+        let start = cal.startOfDay(for: Date())
+        return cal.date(byAdding: .day, value: index - 29, to: start) ?? start
     }
 
     private mutating func writeSettings() throws {
@@ -99,6 +101,9 @@ var availableKg: [Int64: Int64] = [:]
             try AppSetting.set(key: entry.0, value: entry.1, db: db)
         }
         try AppSetting.set(key: "first_launch_seeded", value: "1", db: db)
+        try AppSetting.set(key: "business_address", value: "Plot No. 12, Industrial Growth Centre, Amingaon, Guwahati", db: db)
+        try AppSetting.set(key: "business_city", value: "Guwahati", db: db)
+        try AppSetting.set(key: "business_state", value: "Assam", db: db)
     }
 
     private mutating func writeProducts() throws {
@@ -126,14 +131,14 @@ var availableKg: [Int64: Int64] = [:]
 
     private mutating func writeParties() throws {
         let customerData: [(String, String, String, Int64, Int64)] = [
-            ("Shivam Constructions", "Maharashtra", "Wada", Int64(15_000_000) * 100, Int64(400_000) * 100),
-            ("Nilesh Builders & Developers", "Maharashtra", "Vasai", Int64(10_000_000) * 100, Int64(150_000) * 100),
-            ("RMC Prime Concrete", "Maharashtra", "Bhiwandi", Int64(20_000_000) * 100, Int64(650_000) * 100),
-            ("Ajay Procon Pvt Ltd", "Maharashtra", "Palghar", Int64(12_000_000) * 100, Int64(0)),
-            ("Green Infra Projects", "Maharashtra", "Thane", Int64(18_000_000) * 100, Int64(300_000) * 100),
-            ("Aakash Traders", "Maharashtra", "Manor", Int64(6_000_000) * 100, Int64(90_000) * 100),
-            ("Vikas Farmhouse & Earthworks", "Maharashtra", "Dahanu", Int64(4_000_000) * 100, Int64(0)),
-            ("Shree Balaji Nirman", "Maharashtra", "Murbad", Int64(8_000_000) * 100, Int64(120_000) * 100),
+            ("Brahmaputra Constructions Pvt Ltd", "Assam", "Guwahati", Int64(15_000_000) * 100, Int64(400_000) * 100),
+            ("Dikhow Builders & Contractors", "Assam", "Jorhat", Int64(10_000_000) * 100, Int64(150_000) * 100),
+            ("North East RMC & Concrete", "Assam", "Nagaon", Int64(20_000_000) * 100, Int64(650_000) * 100),
+            ("Kamrup Infrastructure Ltd", "Assam", "Kamrup", Int64(12_000_000) * 100, Int64(0)),
+            ("Luit Valley Projects", "Assam", "Tezpur", Int64(18_000_000) * 100, Int64(300_000) * 100),
+            ("Barak Earth Movers", "Assam", "Silchar", Int64(6_000_000) * 100, Int64(90_000) * 100),
+            ("Jalukbari Highway Works", "Assam", "Guwahati", Int64(4_000_000) * 100, Int64(0)),
+            ("Dima Hasao Road Contractors", "Assam", "Haflong", Int64(8_000_000) * 100, Int64(120_000) * 100),
         ]
         for entry in customerData {
             var customer = Customer(
@@ -151,10 +156,10 @@ var availableKg: [Int64: Int64] = [:]
         }
 
         let supplierData: [(String, String)] = [
-            ("Bharat Petro Sales", "Thane"),
-            ("Crusher Spares Depot", "Bhiwandi"),
-            ("Dahiwadi Blasting Services", "Wada"),
-            ("Sai Labour Services", "Vasai"),
+            ("Indian Oil Corporation", "Guwahati"),
+            ("North East Crusher Spares", "Guwahati"),
+            ("Assam Blasting & Explosives", "Nagaon"),
+            ("Brahmaputra Labour Contractors", "Jorhat"),
         ]
         for entry in supplierData {
             var supplier = Supplier(
@@ -170,12 +175,12 @@ var availableKg: [Int64: Int64] = [:]
 
     private mutating func writeVehicles() throws {
         let vehicleData: [(String, Vehicle.Ownership, Int64, String, String)] = [
-            ("MH-04-FX-1123", .own, 20_000, "Ramesh Jadhav", "9821045612"),
-            ("MH-04-FX-1124", .own, 20_000, "Sunil Pawar", "9850123457"),
-            ("MH-48-CY-7791", .own, 16_400, "Vikram Patil", "9967890235"),
-            ("MH-12-AB-4321", .hired, 20_000, "Deepak More", "9004501123"),
-            ("MH-48-DT-5502", .hired, 16_000, "Kiran Shinde", "9766332212"),
-            ("MH-04-GX-9987", .hired, 26_000, "Ganesh Chavan", "9822334456"),
+            ("AS-01-BC-8123", .own, 20_000, "Pankaj Das", "9435012456"),
+            ("AS-01-BC-8124", .own, 20_000, "Hiren Borah", "9435123789"),
+            ("AS-06-CZ-7791", .own, 16_400, "Dipen Nath", "9954126789"),
+            ("AS-01-AD-4321", .hired, 20_000, "Jatin Kalita", "9864123456"),
+            ("AS-07-DT-5502", .hired, 16_000, "Mintu Gogoi", "9612345678"),
+            ("AS-01-GX-9987", .hired, 26_000, "Ratul Saikia", "7002123456"),
         ]
         for entry in vehicleData {
             var vehicle = Vehicle(
@@ -342,21 +347,19 @@ var availableKg: [Int64: Int64] = [:]
             )
             try royalty.insert(db)
         }
-        if dayIndex % 15 == 0 {
-            var electricity = Purchase(
-                date: date,
-                category: .electricity,
-                amountPaise: Int64(randInt(110_000...135_000)) * 100,
-                notes: "MSEB bill"
-            )
-            try electricity.insert(db)
-        }
+        let notes = ["MSEB bill", "ASEB bill", "Electricity charges"]
+        var electricity = Purchase(
+            date: date,
+            category: .electricity,
+            amountPaise: Int64(randInt(110_000...145_000)) * 100,
+            notes: notes[randInt(0..<notes.count)]
+        )
         if dayIndex % 29 == 0 {
             var rent = Purchase(
                 date: date,
                 category: .rent,
-                amountPaise: Int64(60_000) * 100,
-                notes: "Yard rent"
+                amountPaise: Int64(75_000) * 100,
+                notes: "Yard rent - Amingaon"
             )
             try rent.insert(db)
         }

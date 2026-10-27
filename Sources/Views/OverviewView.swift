@@ -123,6 +123,7 @@ struct OverviewView: View {
         }
         .background(DS.Color.contentBackground)
         .navigationTitle("Dashboard")
+        .toolbarTitleDisplayMode(.inline)
         .refreshable { await reload() }
         .task { await reload(); loaded = true }
         .loadingOverlay(!loaded)
